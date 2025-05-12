@@ -6,11 +6,13 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 
 public class LogSaver {
-
+    
+    // khai báo final các biến của airtable api
     private static final String BASE_ID = "appfCAcN1QNkRSbWs";
     private static final String TABLE_NAME = "Logs";
     private static final String API_KEY = "Bearer patKBjQ8CmLopwrOY.62005630e32049f180f9bfaa528189dcc2639b9d7d4fc1b593b8ae581637dbaa";
 
+    // method thêm log vào airtable
     public void addRecord(String sender, String message, String time, String chatType, String chatTitle, String chatId) throws IOException {
         String urlString = "https://api.airtable.com/v0/" + BASE_ID + "/" + TABLE_NAME;
         URL url = new URL(urlString);
