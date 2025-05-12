@@ -14,26 +14,20 @@ import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
 public class ChatLoggerBot extends TelegramLongPollingBot {
 
-    // Thay token và username của bot
-    private static final String BOT_TOKEN = "7605592923:AAHSP_XIE00dpeq9ZOSOB20aYsHIU8xL8Ck";
-    private static final String BOT_USERNAME = "theveryverybot";
-
     private final CommandHandler commandHandler = new CommandHandler(this);// khởi tạo CommandHandler để xử lý các lệnh từ người dùng
-    
     
     private final LogSaver airtable = new LogSaver(); // Khởi tạo LogSaver để ghi log vào Airtable
 
     // override các method của TelegramLongPollingBot
     @Override
     public String getBotUsername() {
-        return BOT_USERNAME;
-    }
+        return BotConfig.getTelegramBotname();
+}
 
     @Override
     public String getBotToken() {
-        return BOT_TOKEN;
-    }
-
+        return BotConfig.getTelegramToken();
+}
 
     // method để xử lý các tin nhắn đến
     // method sẽ được gọi khi bot nhận được tin nhắn
