@@ -4,11 +4,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 
+// class này dùng để đọc file config.properties để lưu trữ các cấu hình của bot
 public class BotConfig {
     private static final Properties props = new Properties();
 
     static {
-        try (InputStream input = BotConfig.class.getClassLoader().getResourceAsStream("config.properties")) {
+        try (InputStream input = BotConfig.class.getClassLoader().getResourceAsStream("config.properties")) { 
             if (input == null) {
                 throw new IllegalStateException("config.properties not found");
             }
@@ -18,6 +19,7 @@ public class BotConfig {
         }
     }
 
+    // lấy giá trị token api của cả telegram và airtable từ config.properties
     public static String get(String key) {
         return props.getProperty(key);
     }

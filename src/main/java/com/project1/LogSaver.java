@@ -1,5 +1,6 @@
 package com.project1;
 
+// thư viện https và url
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
