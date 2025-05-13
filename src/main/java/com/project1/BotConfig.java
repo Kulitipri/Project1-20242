@@ -4,8 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 
-// class này dùng để đọc file config.properties
-// class này dùng để lưu trữ các thông tin cấu hình của bot
+// class này dùng để đọc file config.properties để lưu trữ các cấu hình của bot
 public class BotConfig {
     private static final Properties props = new Properties();
 
@@ -20,7 +19,7 @@ public class BotConfig {
         }
     }
 
-    // lấy giá trị từ config.properties
+    // lấy giá trị token api của cả telegram và airtable từ config.properties
     public static String get(String key) {
         return props.getProperty(key);
     }
