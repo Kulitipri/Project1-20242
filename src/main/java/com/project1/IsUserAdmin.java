@@ -11,9 +11,9 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 public class IsUserAdmin {
 
-    private final AbsSender bot;
+    private final AbsSender bot; // Khai báo AbsSender để gửi tin nhắn
 
-    public IsUserAdmin(AbsSender bot) {
+    public IsUserAdmin(AbsSender bot) { // Constructor nhận AbsSender
         this.bot = bot;
     }
 
