@@ -1,10 +1,12 @@
-package com.project1;
+package com.project1.AirTable;
 
 // thư viện https và url
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+
+import com.project1.config.BotConfig;
 
 public class LogSaver {
     

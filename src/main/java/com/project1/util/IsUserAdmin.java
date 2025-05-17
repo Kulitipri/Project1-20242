@@ -1,4 +1,4 @@
-package com.project1;
+package com.project1.util;
 
 import java.util.List;
 
@@ -17,7 +17,6 @@ public class IsUserAdmin {
         this.bot = bot;
     }
 
-    // Kiểm tra xem người dùng có phải là admin trong group không
     public boolean check(Long chatId, User user) {
         try {
             GetChatAdministrators getAdmins = new GetChatAdministrators();
@@ -30,13 +29,18 @@ public class IsUserAdmin {
                     return true;
                 }
             }
+
+            return false;
+
         } catch (TelegramApiException e) {
-            System.err.println("Lỗi khi kiểm tra admin: " + e.getMessage());
+            System.err.println("⚠️ Failed to check admin rights: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("❌ Unexpected error in IsUserAdmin: " + e.getMessage());
         }
+
         return false;
     }
 
-    // Shortcut: truyền trực tiếp từ Message
     public boolean isAdmin(Message message) {
         return check(message.getChatId(), message.getFrom());
     }
