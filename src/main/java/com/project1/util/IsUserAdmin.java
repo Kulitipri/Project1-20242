@@ -18,6 +18,9 @@ public class IsUserAdmin {
     }
 
     public boolean check(Long chatId, User user) {
+        
+        if (chatId == null || user == null) return false;
+        
         try {
             GetChatAdministrators getAdmins = new GetChatAdministrators();
             getAdmins.setChatId(chatId.toString());
@@ -42,6 +45,7 @@ public class IsUserAdmin {
     }
 
     public boolean isAdmin(Message message) {
+        if (message == null || message.getFrom() == null) return false;
         return check(message.getChatId(), message.getFrom());
     }
 }

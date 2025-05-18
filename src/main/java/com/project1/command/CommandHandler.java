@@ -15,10 +15,12 @@ public class CommandHandler {
 
     private final AbsSender bot;
     private final IsUserAdmin adminChecker; // Sửa lỗi thiếu class adminChecker
+    private final SetSchedule setScheduleHandler;
 
     public CommandHandler(AbsSender bot) {
         this.bot = bot;
         this.adminChecker = new IsUserAdmin(bot); // Initialize adminChecker with bot
+        this.setScheduleHandler = new SetSchedule(bot); // Initialize setScheduleHandler with bot
     }
 
     public void handleCommand(Message message) {
@@ -27,6 +29,16 @@ public class CommandHandler {
 
         String date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy"));
         String time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+
+        String chatType = message.getChat().getType(); // "private", "group", "supergroup"
+        Long userId = message.getFrom().getId();
+        
+        
+        String stateKey = userId + "_" + chatId;// Tạo khóa duy nhất cho người dùng và nhóm
+        if (SetSchedule.userStates.containsKey(stateKey)) {
+            setScheduleHandler.handle(message);
+            return;
+        }
 
         // command handle
         switch (text) {
@@ -47,7 +59,6 @@ public class CommandHandler {
             
             // lệnh chỉ dành cho admin
             case "/Test":
-                String chatType = message.getChat().getType(); // "private", "group", "supergroup"
                 if (chatType.equals("private")) {
                     send(chatId, "This command is only available in group chat.");
                     return;
@@ -59,6 +70,9 @@ public class CommandHandler {
                 } else {
                     send(chatId, "You are not an admin. Only admins can use this command.");
                 }
+                return;
+            case "/set_schedule":
+                setScheduleHandler.start(chatId, userId, chatType, message); // ✅ bắt đầu lịch học
                 return;
         }
 

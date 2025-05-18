@@ -17,7 +17,6 @@ import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
 import com.project1.AirTable.LogSaver;
 import com.project1.command.CommandHandler;
-import com.project1.command.SetSchedule;
 import com.project1.config.BotConfig;
 import com.project1.util.InfoExtractor;
 import com.project1.util.IsUserAdmin;
@@ -28,7 +27,6 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
     private final LogSaver airtable = new LogSaver();
     private final Map<Long, Map<String, List<String>>> pendingScheduleRequests = new ConcurrentHashMap<>();
     private final IsUserAdmin adminChecker = new IsUserAdmin(this);
-    private final SetSchedule scheduleHandler = new SetSchedule(this); // ✅ tên đúng
 
     @Override
     public String getBotUsername() {
@@ -56,22 +54,24 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
         String chatTitle = message.getChat().getTitle();
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"));
 
-        // In ra terminal
+        // Print to terminal
         System.out.println("──────────────────────────────────────────");
         System.out.println(timestamp);
         System.out.println("Chat ID: " + chatId + " (" + chatType + ")" + (chatTitle != null ? " (" + chatTitle + ")" : ""));
         System.out.println("Sender: " + sender + (username != null ? " (@" + username + ")" : ""));
         System.out.println("Message: " + text);
 
-        // ✅ 1. Xử lý xác nhận 'y/n' nếu đang chờ xác nhận lịch
+        
+
+        // ✅ Handle confirmation after auto-detection
         if (pendingScheduleRequests.containsKey(userId)) {
             if (chatType.equals("PRIVATE")) {
-                    send(chatId, "This feature only works in group chats.");
-                    return;
-                }
+                send(chatId, "This feature only works in group chats.");
+                return;
+            }
+
             if (text.equalsIgnoreCase("y")) {
-                
-                if (chatType.equals("GROUP") && !adminChecker.isAdmin(message)) {
+                if (!adminChecker.isAdmin(message)) {
                     send(chatId, "Only admins can verify schedule requests in group chats.");
                     return;
                 }
@@ -83,7 +83,7 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
                         "\n🏫 Location: " + String.join(", ", schedule.get("Location")) +
                         "\n📍 Group ID: " + chatId);
                 return;
-            
+
             } else if (text.equalsIgnoreCase("n")) {
                 pendingScheduleRequests.remove(userId);
                 send(chatId, "❌ Schedule request canceled.");
@@ -91,22 +91,10 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
             }
         }
 
-        // ✅ 2. Xử lý lệnh /set_schedule
-        if (text.equalsIgnoreCase("/set_schedule")) {
-            scheduleHandler.start(chatId, userId, chatTypeRaw, message);
-            return;
-        }
-
-        // ✅ 3. Nếu đang trong quá trình nhập lịch theo từng bước
-        if (SetSchedule.userStates.containsKey(userId)) {
-            scheduleHandler.handle(message);
-            return;
-        }
-
-        // ✅ 4. Xử lý lệnh khác
+        // ✅ Command handler
         commandHandler.handleCommand(message);
 
-        // ✅ 5. Ghi log tin nhắn vào Airtable
+        // ✅ Log to Airtable
         try {
             airtable.addRecord(sender, text, timestamp, chatType, chatTitle != null ? chatTitle : "NULL", chatId.toString());
             System.out.println("✅ Log saved to Airtable.");
@@ -114,7 +102,7 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
             System.err.println("❌ Airtable error: " + e.getMessage());
         }
 
-        // ✅ 6. Trích xuất thông tin lịch học (nếu có)
+        // ✅ Extract schedule
         Map<String, List<String>> info = InfoExtractor.extractInfo(text);
         List<String> times = info.get("Time");
         List<String> subjects = info.get("Subject");
