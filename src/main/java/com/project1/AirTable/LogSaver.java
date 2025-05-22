@@ -12,7 +12,7 @@ public class LogSaver {
     
     // khai báo final các biến của airtable api
     private static final String BASE_ID = BotConfig.getAirtableBaseId();
-    private static final String TABLE_NAME = BotConfig.getAirtableTableName();
+    private static final String TABLE_NAME = BotConfig.getLogTableName();
     private static final String API_KEY = BotConfig.getAirtableToken();
 
     // method thêm log vào airtable

@@ -40,7 +40,11 @@ public class BotConfig {
         return get("airtable.base_id");
     }
 
-    public static String getAirtableTableName() {
-        return get("airtable.table_name");
+    public static String getLogTableName() {
+        return get("airtable.log_table_name");
+    }
+
+    public static String getScheduleTableName() {
+        return get("airtable.schedule_table_name");
     }
 }

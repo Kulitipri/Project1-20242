@@ -1,7 +1,7 @@
 package com.project1.command;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Message;
@@ -9,11 +9,15 @@ import org.telegram.telegrambots.meta.api.objects.User;
 import org.telegram.telegrambots.meta.bots.AbsSender;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
+import com.project1.AirTable.ScheduleSaver;
 import com.project1.util.IsUserAdmin;
+
+
 
 public class SetSchedule {
 
-    public static final Map<String, ScheduleState> userStates = new HashMap<>();
+    public static final Map<String, ScheduleState> userStates = new ConcurrentHashMap<>();
+
 
     private final AbsSender bot;
     private final IsUserAdmin adminChecker;
@@ -54,6 +58,13 @@ public class SetSchedule {
             return;
         }
 
+        
+        if (text.equalsIgnoreCase("/cancel")) {
+            send(chatId, "❌ Schedule creation canceled.");
+            userStates.remove(key);
+            return;
+        }
+
         if (!state.hasSubject()) {
             state.setSubject(text);
             send(chatId, "🕒 Please enter the *time* of the class:");
@@ -68,6 +79,9 @@ public class SetSchedule {
 
         if (!state.hasLocation()) {
             state.setLocation(text);
+
+            ScheduleSaver.save(state.subject, state.time, state.location, state.getTargetGroupId());
+
             send(chatId, "✅ Schedule created successfully:\n\n"
                     + "📘 Subject: " + state.subject + "\n"
                     + "🕒 Time: " + state.time + "\n"

@@ -11,16 +11,17 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import com.project1.util.IsUserAdmin;
 
+
 public class CommandHandler {
 
     private final AbsSender bot;
-    private final IsUserAdmin adminChecker; // Sửa lỗi thiếu class adminChecker
+    private final IsUserAdmin adminChecker; 
     private final SetSchedule setScheduleHandler;
 
     public CommandHandler(AbsSender bot) {
         this.bot = bot;
-        this.adminChecker = new IsUserAdmin(bot); // Initialize adminChecker with bot
-        this.setScheduleHandler = new SetSchedule(bot); // Initialize setScheduleHandler with bot
+        this.adminChecker = new IsUserAdmin(bot); // tạo đối tượng adminChecker
+        this.setScheduleHandler = new SetSchedule(bot); // tạo đối tượng setScheduleHandler
     }
 
     public void handleCommand(Message message) {
@@ -40,6 +41,7 @@ public class CommandHandler {
             return;
         }
 
+        
         // command handle
         switch (text) {
             
@@ -71,14 +73,20 @@ public class CommandHandler {
                     send(chatId, "You are not an admin. Only admins can use this command.");
                 }
                 return;
+            
             case "/set_schedule":
                 setScheduleHandler.start(chatId, userId, chatType, message); // ✅ bắt đầu lịch học
                 return;
+            case "/cancel":
+                send(chatId, "⚠️ You have to be in the process of setting a schedule to use this command.");
+                // xử lý logic huỷ lịch học nằm ở class SetSchedule
+                return;
         }
+    
 
         // Nếu là lệnh không hợp lệ
         if (text.startsWith("/")) {
-            send(chatId, "Command not found. Type /help to see the list of commands.");
+            send(chatId, "Command not found. Type */help* to see the list of commands.");
         }
     }
 
