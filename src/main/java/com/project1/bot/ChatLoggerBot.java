@@ -16,6 +16,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
 import com.project1.AirTable.LogSaver;
+import com.project1.AirTable.ScheduleSaver;
 import com.project1.command.CommandHandler;
 import com.project1.config.BotConfig;
 import com.project1.util.InfoExtractor;
@@ -25,7 +26,7 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
 
     private final CommandHandler commandHandler = new CommandHandler(this);
     private final LogSaver airtable = new LogSaver();
-    private final Map<Long, Map<String, List<String>>> pendingScheduleRequests = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, List<String>>> pendingScheduleRequests = new ConcurrentHashMap<>();
     private final IsUserAdmin adminChecker = new IsUserAdmin(this);
 
     @Override
@@ -64,32 +65,53 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
         
 
         // ✅ Handle confirmation after auto-detection
-        if (pendingScheduleRequests.containsKey(userId)) {
-            if (chatType.equals("PRIVATE")) {
-                send(chatId, "This feature only works in group chats.");
+        String key = userId + "_" + chatId; // tạo khóa duy nhất
+
+        if (pendingScheduleRequests.containsKey(key)) {
+            if (chatType.equals("PRIVATE")) return; // tránh spam
+
+            // Lệnh hủy thủ công
+            if (text.equalsIgnoreCase("/cancel")) {
+                pendingScheduleRequests.remove(key);
+                send(chatId, "❌ Schedule request canceled.");
                 return;
             }
 
-            if (text.equalsIgnoreCase("y")) {
-                if (!adminChecker.isAdmin(message)) {
-                    send(chatId, "Only admins can verify schedule requests in group chats.");
-                    return;
-                }
+            // Nếu không phải admin thì từ chối xác nhận/hủy
+            if (!adminChecker.isAdmin(message)) {
+                send(chatId, "Only admins can verify schedule requests in group chats.");
+                pendingScheduleRequests.remove(key);
+                return;
+            }
 
-                Map<String, List<String>> schedule = pendingScheduleRequests.remove(userId);
+            // Nếu là xác nhận
+            if (text.equalsIgnoreCase("y")) {
+ 
+                Map<String, List<String>> schedule = pendingScheduleRequests.remove(key);
+
+            ScheduleSaver.save(
+                String.join(", ", schedule.get("Subject")),
+                String.join(", ", schedule.get("Time")),
+                String.join(", ", schedule.get("Location")),
+                chatId.toString()
+            );
+
                 send(chatId, "✅ Schedule created successfully:" +
-                        "\n📘 Subject: " + String.join(", ", schedule.get("Subject")) +
+                        "\n\n📘 Subject: " + String.join(", ", schedule.get("Subject")) +
                         "\n🕒 Time: " + String.join(", ", schedule.get("Time")) +
                         "\n🏫 Location: " + String.join(", ", schedule.get("Location")) +
                         "\n📍 Group ID: " + chatId);
                 return;
+            }
 
-            } else if (text.equalsIgnoreCase("n")) {
-                pendingScheduleRequests.remove(userId);
+            // Nếu là từ chối
+            if (text.equalsIgnoreCase("n")) {
+                pendingScheduleRequests.remove(key);
                 send(chatId, "❌ Schedule request canceled.");
                 return;
             }
         }
+
 
         // ✅ Command handler
         commandHandler.handleCommand(message);
@@ -109,9 +131,14 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
         List<String> locations = info.get("Location");
 
         if (!times.isEmpty() && !subjects.isEmpty() && !locations.isEmpty()) {
-            pendingScheduleRequests.put(userId, info);
+            pendingScheduleRequests.put(key, info);
 
-            String preview = String.format("📘 Detected class schedule:\n - Subject: %s\n - Time: %s\n - Location: %s",
+            if (chatType.equals("PRIVATE")) {
+                send(chatId, "This feature is only available in group chats.");
+                return;
+            }
+
+            String preview = String.format("Detected class schedule:\n\n 📘 Subject: %s\n 🕒 Time: %s\n 🏫 Location: %s",
                     String.join(", ", subjects),
                     String.join(", ", times),
                     String.join(", ", locations));
