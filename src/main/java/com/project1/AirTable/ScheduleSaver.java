@@ -13,7 +13,7 @@ public class ScheduleSaver {
     private static final String TABLE_NAME = BotConfig.getScheduleTableName();
     private static final String API_KEY = BotConfig.getAirtableToken();
 
-    public static void save(String subject, String time, String location, String groupId) {
+    public static void save(String subject, String time, String location, String groupId, String groupName, String scheduleId) {
         try {
             
             String urlString = "https://api.airtable.com/v0/" + BASE_ID + "/" + TABLE_NAME;
@@ -30,13 +30,17 @@ public class ScheduleSaver {
             String locationStr = String.join(", ", location);
 
             String json = String.format(
-                "{ \"fields\": { " +
-                "\"GroupId\": \"%s\", " +
-                "\"Subject\": \"%s\", " +
-                "\"Time\": \"%s\", " +
-                "\"Location\": \"%s\" " +
-                "} }",
+            "{ \"fields\": { " +
+            "\"GroupId\": \"%s\", " +
+            "\"GroupName\": \"%s\", " +
+            "\"ScheduleId\": \"%s\", " +
+            "\"Subject\": \"%s\", " +
+            "\"Time\": \"%s\", " +
+            "\"Location\": \"%s\" " +
+            "} }",
                 escapeJson(groupId),
+                escapeJson(groupName),
+                escapeJson(scheduleId),
                 escapeJson(subjectStr),
                 escapeJson(timeStr),
                 escapeJson(locationStr)
