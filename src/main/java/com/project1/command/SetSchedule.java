@@ -40,7 +40,7 @@ public class SetSchedule {
     // Nếu đang nhập Group ID ở private chat
     if ("private".equals(chatType) && temp.record.groupId == null) {
         try {
-            Long groupId = Long.parseLong(text);
+            Long groupId = Long.valueOf(text);
             if (!adminChecker.check(groupId, user)) {
                 send(chatId, "⛔ You are not an admin in this group.");
                 userStates.remove(key);
