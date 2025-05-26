@@ -11,16 +11,15 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import com.project1.AirTable.ScheduleSaver;
 import com.project1.util.IsUserAdmin;
-
-
+import com.project1.util.ScheduleManager;
+import com.project1.util.ScheduleRecord;
 
 public class SetSchedule {
 
-    public static final Map<String, ScheduleState> userStates = new ConcurrentHashMap<>();
-
-
+    private static final Map<String, TempScheduleState> userStates = new ConcurrentHashMap<>();
     private final AbsSender bot;
     private final IsUserAdmin adminChecker;
+    private final ScheduleManager scheduleManager = new ScheduleManager();
 
     public SetSchedule(AbsSender bot) {
         this.bot = bot;
@@ -28,85 +27,106 @@ public class SetSchedule {
     }
 
     public void handle(Message message) {
-        Long userId = message.getFrom().getId();
-        Long chatId = message.getChatId();
-        String text = message.getText().trim();
-        String chatType = message.getChat().getType();
-        User user = message.getFrom();
+    Long userId = message.getFrom().getId();
+    Long chatId = message.getChatId();
+    String text = message.getText().trim();
+    String chatType = message.getChat().getType();
+    User user = message.getFrom();
 
-        String key = userId + "_" + chatId;
-        ScheduleState state = userStates.get(key);
-        if (state == null) return;
+    String key = userId + "_" + chatId;
+    TempScheduleState temp = userStates.get(key);
+    if (temp == null) return;
 
-        if ((chatType.equals("group") || chatType.equals("supergroup")) && !state.hasTargetGroup()) {
-            return;
-        }
-
-        if (chatType.equals("private") && !state.hasTargetGroup()) {
-            try {
-                Long groupId = Long.valueOf(text);
-                if (!adminChecker.check(groupId, user)) {
-                    send(chatId, "⛔ You are not an admin in this group.");
-                    userStates.remove(key);
-                    return;
-                }
-                state.setTargetGroup(groupId.toString());
-                send(chatId, "✅ Group verified. Now enter the *subject* of the class:");
-            } catch (NumberFormatException e) {
-                send(chatId, "❌ Invalid group ID format. Please enter a numeric group ID.");
+    // Nếu đang nhập Group ID ở private chat
+    if ("private".equals(chatType) && temp.record.groupId == null) {
+        try {
+            Long groupId = Long.parseLong(text);
+            if (!adminChecker.check(groupId, user)) {
+                send(chatId, "⛔ You are not an admin in this group.");
+                userStates.remove(key);
+                return;
             }
-            return;
+            temp.record.groupId = groupId;
+            send(chatId, "✅ Group verified. Now enter the *subject* of the class:");
+        } catch (NumberFormatException e) {
+            send(chatId, "❌ Invalid group ID. Please enter a numeric group ID.");
         }
+        return;
+    }
 
-        
-        if (text.equalsIgnoreCase("/cancel")) {
-            send(chatId, "❌ Schedule creation canceled.");
-            userStates.remove(key);
-            return;
-        }
+    // Hủy giữa chừng
+    if (text.equalsIgnoreCase("/cancel")) {
+        send(chatId, "❌ Schedule creation canceled.");
+        userStates.remove(key);
+        return;
+    }
 
-        if (!state.hasSubject()) {
-            state.setSubject(text);
+    // Logic từng bước
+    switch (temp.step) {
+        case 0:
+            temp.record.subject = text;
+            temp.step++;
             send(chatId, "🕒 Please enter the *time* of the class:");
-            return;
-        }
-
-        if (!state.hasTime()) {
-            state.setTime(text);
+            break;
+        case 1:
+            temp.record.time = text;
+            temp.step++;
             send(chatId, "🏫 Please enter the *location* of the class:");
-            return;
-        }
+            break;
+        case 2:
+            temp.record.location = text;
 
-        if (!state.hasLocation()) {
-            state.setLocation(text);
+            String scheduleId = scheduleManager.addSchedule(
+                temp.record.subject,
+                temp.record.time,
+                temp.record.location,
+                temp.record.groupId
+            );
 
-            ScheduleSaver.save(state.subject, state.time, state.location, state.getTargetGroupId());
+            ScheduleSaver.save(
+                temp.record.subject,
+                temp.record.time,
+                temp.record.location,
+                String.valueOf(temp.record.groupId),
+                temp.chatTitle != null ? temp.chatTitle : "N/A",
+                scheduleId
+            );
 
             send(chatId, "✅ Schedule created successfully:\n\n"
-                    + "📘 Subject: " + state.subject + "\n"
-                    + "🕒 Time: " + state.time + "\n"
-                    + "🏫 Location: " + state.location + "\n"
-                    + "📍 Group ID: " + state.getTargetGroupId());
+                + "📘 Subject: " + temp.record.subject + "\n"
+                + "🕒 Time: " + temp.record.time + "\n"
+                + "🏫 Location: " + temp.record.location + "\n"
+                + "📍 Group ID: " + temp.record.groupId + "\n"
+                + "✅ Members can confirm with /confirm " + scheduleId);
+
             userStates.remove(key);
-        }
+            break;
+        default:
+            send(chatId, "❌ Invalid step.");
+            break;
     }
+}
+
 
     public void start(Long chatId, Long userId, String chatType, Message message) {
         String key = userId + "_" + chatId;
-        ScheduleState state = new ScheduleState();
+        Long groupId = "private".equals(chatType) ? null : chatId;
 
-        if (!chatType.equals("private")) {
-            if (!adminChecker.isAdmin(message)) {
-                send(chatId, "⛔ Only group admins can create schedules.");
-                return;
-            }
-            state.setTargetGroup(chatId.toString());
-            send(chatId, "📘 Please enter the *subject* of the class:");
-        } else {
-            send(chatId, "🆔 Please enter the *group ID* you want to schedule for:");
+        if (groupId != null && !adminChecker.isAdmin(message)) {
+            send(chatId, "⛔ Only group admins can create schedules.");
+            return;
         }
 
-        userStates.put(key, state);
+        String groupTitle = message.getChat().getTitle(); // will be null in private, handled later
+        ScheduleRecord record = new ScheduleRecord(null, null, null, null, groupId);
+        TempScheduleState temp = new TempScheduleState(record, 0, groupTitle);
+        userStates.put(key, temp);
+
+        if ("private".equals(chatType)) {
+            send(chatId, "🆔 Please enter the *group ID* you want to schedule for:");
+        } else {
+            send(chatId, "📘 Please enter the *subject* of the class:");
+        }
     }
 
     private void send(Long chatId, String text) {
@@ -119,22 +139,19 @@ public class SetSchedule {
         }
     }
 
-    public static class ScheduleState {
-        private String subject;
-        private String time;
-        private String location;
-        private String targetGroupId;
+    private static class TempScheduleState {
+        public final ScheduleRecord record;
+        public int step;
+        public String chatTitle;
 
-        public void setSubject(String s) { this.subject = s; }
-        public void setTime(String t) { this.time = t; }
-        public void setLocation(String l) { this.location = l; }
-        public void setTargetGroup(String g) { this.targetGroupId = g; }
+        public TempScheduleState(ScheduleRecord record, int step, String chatTitle) {
+            this.record = record;
+            this.step = step;
+            this.chatTitle = chatTitle;
+        }
+    }
 
-        public boolean hasSubject() { return subject != null; }
-        public boolean hasTime() { return time != null; }
-        public boolean hasLocation() { return location != null; }
-        public boolean hasTargetGroup() { return targetGroupId != null; }
-
-        public String getTargetGroupId() { return targetGroupId; }
+    public static boolean containsUserState(String key) {
+        return userStates.containsKey(key);
     }
 }
