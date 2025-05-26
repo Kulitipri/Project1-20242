@@ -92,12 +92,12 @@ public class SetSchedule {
                 scheduleId
             );
 
-            send(chatId, "✅ Schedule created successfully:\n\n"
+            send(chatId, "Schedule created successfully:\n\n"
                 + "📘 Subject: " + temp.record.subject + "\n"
                 + "🕒 Time: " + temp.record.time + "\n"
                 + "🏫 Location: " + temp.record.location + "\n"
-                + "📍 Group ID: " + temp.record.groupId + "\n"
-                + "✅ Members can confirm with /confirm " + scheduleId);
+                + "📍 Group ID: " + temp.record.groupId + "\n\n"
+                + "Members can confirm with /confirm " + scheduleId);
 
             userStates.remove(key);
             break;

@@ -69,10 +69,11 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
         // ✅ Handle confirmation nếu có lịch đang chờ xác nhận
         if (pendingScheduleRequests.containsKey(key)) {
 
-            // ✅ Chỉ xử lý nếu user phản hồi là "y" hoặc "n"
-            if (text.equalsIgnoreCase("y")) {
+            if (chatType.equals("GROUP")) {
+                if (text.equalsIgnoreCase("y")) {
 
                 if (!adminChecker.isAdmin(message)) {
+                    pendingScheduleRequests.remove(key);
                     send(chatId, "❌ Only admins can confirm schedules.");
                     return; // Không xóa key → cho phép admin thực hiện lại
                 }
@@ -90,12 +91,12 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
                     scheduleId
                 );
 
-                send(chatId, "✅ Schedule created successfully:\n\n"
+                send(chatId, "Schedule created successfully:\n\n"
                         + "📘 Subject: " + String.join(", ", schedule.get("Subject")) + "\n"
                         + "🕒 Time: " + String.join(", ", schedule.get("Time")) + "\n"
                         + "🏫 Location: " + String.join(", ", schedule.get("Location")) + "\n"
-                        + "📍 Group ID: " + chatId + "\n"
-                        + "✅ Members can confirm with /confirm " + scheduleId);
+                        + "📍 Group ID: " + chatId + "\n\n"
+                        + "Members can confirm with /confirm " + scheduleId);
                 return;
 
             } else if (text.equalsIgnoreCase("n")) {
@@ -103,10 +104,9 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
                 send(chatId, "❌ Schedule request canceled.");
                 return;
             }
-
-            // ❗ Nếu không phải y/n → KHÔNG PHẢN HỒI gì cả
-            return;
         }
+        return;
+    }
 
 
         if (text.startsWith("/confirm")) {
