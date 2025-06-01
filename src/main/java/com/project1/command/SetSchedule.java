@@ -40,7 +40,7 @@ public class SetSchedule {
     // Nếu đang nhập Group ID ở private chat
     if ("private".equals(chatType) && temp.record.groupId == null) {
         try {
-            Long groupId = Long.parseLong(text);
+            Long groupId = Long.valueOf(text);
             if (!adminChecker.check(groupId, user)) {
                 send(chatId, "⛔ You are not an admin in this group.");
                 userStates.remove(key);
@@ -92,12 +92,12 @@ public class SetSchedule {
                 scheduleId
             );
 
-            send(chatId, "✅ Schedule created successfully:\n\n"
+            send(chatId, "Schedule created successfully:\n\n"
                 + "📘 Subject: " + temp.record.subject + "\n"
                 + "🕒 Time: " + temp.record.time + "\n"
                 + "🏫 Location: " + temp.record.location + "\n"
-                + "📍 Group ID: " + temp.record.groupId + "\n"
-                + "✅ Members can confirm with /confirm " + scheduleId);
+                + "📍 Group ID: " + temp.record.groupId + "\n\n"
+                + "Members can confirm with /confirm " + scheduleId);
 
             userStates.remove(key);
             break;

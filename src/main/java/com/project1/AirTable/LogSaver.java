@@ -35,8 +35,8 @@ public class LogSaver {
                 "\"Message\": \"%s\", " +
                 "\"Time\": \"%s\", " +
                 "\"ChatType\": \"%s\", " +
-                "\"ChatTitle\": \"%s\", " +
-                "\"ChatId\": \"%s\" " +
+                "\"GroupName\": \"%s\", " +
+                "\"GroupId\": \"%s\" " +
             "} }",
             escapeJson(sender),
             escapeJson(message),

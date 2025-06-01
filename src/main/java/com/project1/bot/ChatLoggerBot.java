@@ -15,6 +15,7 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
+import com.project1.AirTable.GroupSaver;
 import com.project1.AirTable.LogSaver;
 import com.project1.AirTable.ScheduleSaver;
 import com.project1.command.CommandHandler;
@@ -66,13 +67,15 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
         System.out.println("Sender: " + sender + (username != null ? " (@" + username + ")" : ""));
         System.out.println("Message: " + text);
 
+
         // ✅ Handle confirmation nếu có lịch đang chờ xác nhận
         if (pendingScheduleRequests.containsKey(key)) {
 
-            // ✅ Chỉ xử lý nếu user phản hồi là "y" hoặc "n"
-            if (text.equalsIgnoreCase("y")) {
+            if (chatType.equals("GROUP")) {
+                if (text.equalsIgnoreCase("y")) {
 
                 if (!adminChecker.isAdmin(message)) {
+                    pendingScheduleRequests.remove(key);
                     send(chatId, "❌ Only admins can confirm schedules.");
                     return; // Không xóa key → cho phép admin thực hiện lại
                 }
@@ -90,12 +93,12 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
                     scheduleId
                 );
 
-                send(chatId, "✅ Schedule created successfully:\n\n"
+                send(chatId, "Schedule created successfully:\n\n"
                         + "📘 Subject: " + String.join(", ", schedule.get("Subject")) + "\n"
                         + "🕒 Time: " + String.join(", ", schedule.get("Time")) + "\n"
                         + "🏫 Location: " + String.join(", ", schedule.get("Location")) + "\n"
-                        + "📍 Group ID: " + chatId + "\n"
-                        + "✅ Members can confirm with /confirm " + scheduleId);
+                        + "📍 Group ID: " + chatId + "\n\n"
+                        + "Members can confirm with /confirm " + scheduleId);
                 return;
 
             } else if (text.equalsIgnoreCase("n")) {
@@ -103,10 +106,9 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
                 send(chatId, "❌ Schedule request canceled.");
                 return;
             }
-
-            // ❗ Nếu không phải y/n → KHÔNG PHẢN HỒI gì cả
-            return;
         }
+        return;
+    }
 
 
         if (text.startsWith("/confirm")) {
@@ -121,9 +123,20 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
         // ✅ Ghi log vào Airtable
         try {
             airtable.addRecord(sender, text, timestamp, chatType, chatTitle != null ? chatTitle : "NULL", chatId.toString());
-            System.out.println("✅ Log saved to Airtable.");
+            System.out.println("Log saved to Airtable.");
         } catch (IOException e) {
-            System.err.println("❌ Airtable error: " + e.getMessage());
+            System.err.println("Airtable error: " + e.getMessage());
+        }
+
+        // ✅ Lưu thông tin nhóm vào Airtable nếu là nhóm
+        GroupSaver groupSaver = new GroupSaver(this);
+        try {
+            if (chatType.equals("PRIVATE")) {
+                return;
+            }
+            groupSaver.saveGroup(chatId.toString(), chatTitle);
+        } catch (IOException e) {
+            // thực ra là ở đây có lỗi nhưng mà ko cần thiết phải thông báo
         }
 
         // ✅ Phân tích lịch học
@@ -149,7 +162,7 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
                     String.join(", ", locations));
 
             send(chatId, preview + "\n\nDo you want to add this class to your schedule? (y/n)");
-            System.out.println("📌 Detected class schedule from message.");
+            System.out.println("Detected class schedule from message.");
         }
     }
 
@@ -157,7 +170,7 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
         try {
             execute(new SendMessage(chatId.toString(), text));
         } catch (TelegramApiException e) {
-            System.err.println("❌ Error sending message: " + e.getMessage());
+            System.err.println("Error sending message: " + e.getMessage());
         }
     }
 
@@ -165,9 +178,9 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
             botsApi.registerBot(new ChatLoggerBot());
-            System.out.println("🤖 Bot is running properly...");
+            System.out.println("Bot is running properly...");
         } catch (TelegramApiException e) {
-            System.err.println("❌ Telegram error: " + e.getMessage());
+            System.err.println("Telegram error: " + e.getMessage());
         }
     }
 }

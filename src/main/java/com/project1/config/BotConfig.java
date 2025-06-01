@@ -47,4 +47,8 @@ public class BotConfig {
     public static String getScheduleTableName() {
         return get("airtable.schedule_table_name");
     }
+
+    public static String getListOfGroup(){
+        return get("airtable.list_of_groups");
+    }
 }
