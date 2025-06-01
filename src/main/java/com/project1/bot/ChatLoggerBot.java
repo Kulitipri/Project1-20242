@@ -55,7 +55,7 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
         String chatTitle = message.getChat().getTitle();
         String chatTypeRaw = message.getChat().getType();
         String chatType = chatTypeRaw.equals("private") ? "PRIVATE" : "GROUP";
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"));
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
 
         // Key cho xác nhận lịch
         String key = userId + "_" + chatId;
