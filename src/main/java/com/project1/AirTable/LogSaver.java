@@ -20,7 +20,7 @@ public class LogSaver {
     private static final String API_KEY = BotConfig.getAirtableToken();
 
     // method thêm log vào airtable
-    public void addRecord(String sender, String message, String time, String chatType, String chatTitle, String chatId) throws IOException {
+    public void addRecord(String sender,String userId ,String message, String time, String chatType, String chatTitle, String chatId) throws IOException {
         // Kiểm tra và xóa bản ghi trước khi thêm mới
         checkAndDeleteRecords();
 
@@ -38,7 +38,8 @@ public class LogSaver {
         // sử dụng String.format để định dạng json
         String json = String.format(
             "{ \"fields\": { " +
-                "\"Sender\": \"%s\", " +
+                "\"UserName\": \"%s\", " +
+                "\"UserId\": \"%s\", " +
                 "\"Message\": \"%s\", " +
                 "\"Time\": \"%s\", " +
                 "\"ChatType\": \"%s\", " +
@@ -46,6 +47,7 @@ public class LogSaver {
                 "\"GroupId\": \"%s\" " +
             "} }",
             escapeJson(sender),
+            escapeJson(userId),
             escapeJson(message),
             escapeJson(time),
             escapeJson(chatType),
