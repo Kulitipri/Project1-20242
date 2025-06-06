@@ -51,4 +51,8 @@ public class BotConfig {
     public static String getListOfGroup(){
         return get("airtable.list_of_groups");
     }
+
+    public static String getConfirmationTableName() {
+        return get("airtable.confirmation_table_name");
+    }
 }

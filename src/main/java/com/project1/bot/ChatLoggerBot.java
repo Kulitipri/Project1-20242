@@ -21,8 +21,10 @@ import com.project1.AirTable.ScheduleSaver;
 import com.project1.command.CommandHandler;
 import com.project1.command.ConfirmHandler;
 import com.project1.config.BotConfig;
+import com.project1.util.DateTimeValidator;
 import com.project1.util.InfoExtractor;
 import com.project1.util.IsUserAdmin;
+import com.project1.util.ScheduleManager;
 
 public class ChatLoggerBot extends TelegramLongPollingBot {
 
@@ -31,6 +33,7 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
     private final Map<String, Map<String, List<String>>> pendingScheduleRequests = new ConcurrentHashMap<>();
     private final IsUserAdmin adminChecker = new IsUserAdmin(this);
     private final ConfirmHandler confirmHandler = new ConfirmHandler(this);
+    private final ScheduleManager scheduleManager = ScheduleManager.getInstance(); // Sử dụng singleton
 
     @Override
     public String getBotUsername() {
@@ -67,62 +70,69 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
         System.out.println("Sender: " + sender + (username != null ? " (@" + username + ")" : ""));
         System.out.println("Message: " + text);
 
-
         // ✅ Handle confirmation nếu có lịch đang chờ xác nhận
         if (pendingScheduleRequests.containsKey(key)) {
-
             if (chatType.equals("GROUP")) {
                 if (text.equalsIgnoreCase("y")) {
+                    if (!adminChecker.isAdmin(message)) {
+                        pendingScheduleRequests.remove(key);
+                        send(chatId, "❌ Only admins can confirm schedules.");
+                        return;
+                    }
 
-                if (!adminChecker.isAdmin(message)) {
+                    Map<String, List<String>> schedule = pendingScheduleRequests.remove(key);
+                    String subject = String.join(", ", schedule.get("Subject"));
+                    String time = String.join(", ", schedule.get("Time"));
+                    String location = String.join(", ", schedule.get("Location"));
+
+                    // Kiểm tra thời gian hợp lệ
+                    if (!DateTimeValidator.isValidDateTime(time)) {
+                        send(chatId, "❌ Invalid time format. Time must be in 'dd/MM/yyyy HH:mm' format (e.g., 05/06/2025 14:30) and in the future.");
+                        return;
+                    }
+
+                    // Tạo lịch với ScheduleManager singleton
+                    String scheduleId = scheduleManager.addSchedule(subject, time, location, chatId);
+
+                    // Ghi vào Airtable
+                    ScheduleSaver.save(
+                        subject,
+                        time,
+                        location,
+                        chatId.toString(),
+                        chatTitle != null ? chatTitle : "Unknown Group",
+                        scheduleId
+                    );
+
+                    send(chatId, "✅ Schedule created successfully:\n\n"
+                            + "📘 Subject: " + subject + "\n"
+                            + "🕒 Time: " + time + "\n"
+                            + "🏫 Location: " + location + "\n"
+                            + "📍 Group ID: " + chatId + "\n\n"
+                            + "Members can confirm with /confirm " + scheduleId);
+                    return;
+
+                } else if (text.equalsIgnoreCase("n")) {
                     pendingScheduleRequests.remove(key);
-                    send(chatId, "❌ Only admins can confirm schedules.");
-                    return; // Không xóa key → cho phép admin thực hiện lại
+                    send(chatId, "❌ Schedule request canceled.");
+                    return;
                 }
-
-                Map<String, List<String>> schedule = pendingScheduleRequests.remove(key);
-                String scheduleId = "SCH" + System.currentTimeMillis(); // tạo mã duy nhất
-
-                // Ghi vào Airtable
-                ScheduleSaver.save(
-                    String.join(", ", schedule.get("Subject")),
-                    String.join(", ", schedule.get("Time")),
-                    String.join(", ", schedule.get("Location")),
-                    chatId.toString(),
-                    chatTitle != null ? chatTitle : "Unknown Group",
-                    scheduleId
-                );
-
-                send(chatId, "Schedule created successfully:\n\n"
-                        + "📘 Subject: " + String.join(", ", schedule.get("Subject")) + "\n"
-                        + "🕒 Time: " + String.join(", ", schedule.get("Time")) + "\n"
-                        + "🏫 Location: " + String.join(", ", schedule.get("Location")) + "\n"
-                        + "📍 Group ID: " + chatId + "\n\n"
-                        + "Members can confirm with /confirm " + scheduleId);
-                return;
-
-            } else if (text.equalsIgnoreCase("n")) {
-                pendingScheduleRequests.remove(key);
-                send(chatId, "❌ Schedule request canceled.");
-                return;
             }
+            return;
         }
-        return;
-    }
 
-
+        // Xử lý lệnh /confirm
         if (text.startsWith("/confirm")) {
-        confirmHandler.handleConfirm(message);
-        return;
-    }
-
+            confirmHandler.handleConfirm(message);
+            return;
+        }
 
         // ✅ Xử lý lệnh người dùng
         commandHandler.handleCommand(message);
 
         // ✅ Ghi log vào Airtable
         try {
-            airtable.addRecord(sender, text, timestamp, chatType, chatTitle != null ? chatTitle : "NULL", chatId.toString());
+            airtable.addRecord(sender, userId.toString(), text, timestamp, chatType, chatTitle != null ? chatTitle : "NULL", chatId.toString());
             System.out.println("Log saved to Airtable.");
         } catch (IOException e) {
             System.err.println("Airtable error: " + e.getMessage());
@@ -136,7 +146,7 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
             }
             groupSaver.saveGroup(chatId.toString(), chatTitle);
         } catch (IOException e) {
-            // thực ra là ở đây có lỗi nhưng mà ko cần thiết phải thông báo
+            // Không cần thông báo lỗi
         }
 
         // ✅ Phân tích lịch học
