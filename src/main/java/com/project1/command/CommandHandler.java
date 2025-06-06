@@ -22,7 +22,10 @@ public class CommandHandler {
         this.adminChecker = new IsUserAdmin(bot);
         this.setScheduleHandler = new SetSchedule(bot);
         this.confirmHandler = new ConfirmHandler(bot);
+        this.viewSchedules = new ViewSchedules(bot); // Ensure ViewSchedules is properly declared and initialized
     }
+
+    private final ViewSchedules viewSchedules; // Declare the viewSchedules variable
 
     public void handleCommand(Message message) {
     String text = message.getText().trim();
@@ -85,8 +88,12 @@ public class CommandHandler {
         return;
     }
 
-    if (text.equalsIgnoreCase("/set_schedule")) {
-        setScheduleHandler.start(chatId, userId, chatType, message);
+    if (text.startsWith("/set_schedule")) {
+        if (SetSchedule.containsUserState(key)) {
+            setScheduleHandler.handle(message);
+        } else {
+            setScheduleHandler.start(chatId, userId, chatType, message);
+        }
         return;
     }
 
@@ -97,6 +104,11 @@ public class CommandHandler {
 
     if (text.startsWith("/confirm")) {
         confirmHandler.handleConfirm(message);
+        return;
+    }
+
+    if (text.startsWith("/view_schedules")) {
+        viewSchedules.handle(message);
         return;
     }
 
