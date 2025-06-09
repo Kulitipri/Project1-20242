@@ -1,11 +1,15 @@
-name: Java CI
+name: CI/CD Pipeline
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
-
+    
     steps:
     - uses: actions/checkout@v3
     
@@ -16,13 +20,13 @@ jobs:
         distribution: 'temurin'
         cache: maven
 
-    - name: Build with Maven
-      run: mvn -B package --file pom.xml
-
-    - name: Run tests
+    - name: Run Tests
       run: mvn test
 
-    - name: Upload test results
+    - name: Build
+      run: mvn -B package --file pom.xml
+      
+    - name: Upload Test Results
       if: always()
       uses: actions/upload-artifact@v3
       with:
