@@ -52,6 +52,6 @@ public class ConfirmationSaver {
     }
 
     private static String escapeJson(String input) {
-        return input.replace("\"", "\\\"");
+        return input != null ? input.replace("\"", "\\\"") : "";
     }
 }

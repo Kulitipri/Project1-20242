@@ -49,4 +49,36 @@ public class DateTimeValidator {
     public static String getCurrentDateTime() {
         return NOW.format(DATE_TIME_FORMAT);
     }
+
+    /**
+     * Kiểm tra xem time2 có sau time1 không.
+     * @param time1 Chuỗi thời gian bắt đầu
+     * @param time2 Chuỗi thời gian kết thúc
+     * @return true nếu time2 sau time1, false nếu không hoặc lỗi định dạng
+     */
+    public static boolean isAfter(String time1, String time2) {
+        try {
+            LocalDateTime dateTime1 = LocalDateTime.parse(time1, DATE_TIME_FORMAT);
+            LocalDateTime dateTime2 = LocalDateTime.parse(time2, DATE_TIME_FORMAT);
+            return dateTime2.isAfter(dateTime1);
+        } catch (DateTimeParseException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Cộng thêm số giờ vào chuỗi thời gian.
+     * @param time Chuỗi thời gian bắt đầu
+     * @param hours Số giờ cần cộng
+     * @return Chuỗi thời gian kết thúc hoặc null nếu lỗi
+     */
+    public static String addHoursToTime(String time, int hours) {
+        try {
+            LocalDateTime dateTime = LocalDateTime.parse(time, DATE_TIME_FORMAT);
+            LocalDateTime newDateTime = dateTime.plusHours(hours);
+            return newDateTime.format(DATE_TIME_FORMAT);
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
 }

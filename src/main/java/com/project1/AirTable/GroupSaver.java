@@ -5,6 +5,10 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import org.telegram.telegrambots.meta.api.methods.groupadministration.GetChat;
 import org.telegram.telegrambots.meta.api.objects.Chat;
@@ -29,64 +33,57 @@ public class GroupSaver {
     }
 
     public void saveGroup(String chatId, String chatTitle) throws IOException {
-    // Kiểm tra loại chat
-    String chatType = getChatType(chatId);
-    if (!"group".equals(chatType) && !"supergroup".equals(chatType)) {
-        return;
-    }
+        // Kiểm tra loại chat và lấy mô tả
+        String chatType = getChatType(chatId);
+        String description = getChatDescription(chatId, chatType);
 
-    // Lấy mô tả (chỉ có trong supergroup)
-    String description = getChatDescription(chatId, chatType);
+        // Kiểm tra tồn tại và lấy link mời
+        String[] existingRecord = getExistingRecord(chatId);
+        String recordId = existingRecord[0];
+        String existingInviteLink = existingRecord[1];
+        String inviteLink = existingInviteLink;
+        if (recordId == null) {
+            InviteLinkFetcher fetcher = new InviteLinkFetcher(bot);
+            inviteLink = fetcher.getChatInviteLink(chatId);
+        }
 
-    // Kiểm tra tồn tại và lấy link mời
-    String[] existingRecord = getExistingRecord(chatId);
-    String recordId = existingRecord[0];
-    String existingInviteLink = existingRecord[1];
-    String inviteLink = existingInviteLink;
-    if (recordId == null) {
-        InviteLinkFetcher fetcher = new InviteLinkFetcher(bot);
-        inviteLink = fetcher.getChatInviteLink(chatId);
-    }
+        // Tạo JSON
+        boolean isUpdate = recordId != null;
+        String method = isUpdate ? "PATCH" : "POST";
+        String urlString = "https://api.airtable.com/v0/" + BASE_ID + "/" + TABLE_NAME + (isUpdate ? ("/" + recordId) : "");
 
-    // Tạo JSON
-    boolean isUpdate = recordId != null;
-    String method = isUpdate ? "PATCH" : "POST";
-    String urlString = "https://api.airtable.com/v0/" + BASE_ID + "/" + TABLE_NAME + (isUpdate ? ("/" + recordId) : "");
+        URL url = new URL(urlString);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 
-    URL url = new URL(urlString);
-    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        // Thiết lập HTTP method
+        if (method.equals("PATCH")) {
+            conn.setRequestProperty("X-HTTP-Method-Override", "PATCH");
+            conn.setRequestMethod("POST");
+        } else {
+            conn.setRequestMethod(method);
+        }
 
-    // Thiết lập HTTP method
-    if (method.equals("PATCH")) {
-        // Workaround cho Java không hỗ trợ PATCH
-        conn.setRequestProperty("X-HTTP-Method-Override", "PATCH");
-        conn.setRequestMethod("POST");
-    } else {
-        conn.setRequestMethod(method);
-    }
+        conn.setRequestProperty("Authorization", API_KEY.trim());
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setDoOutput(true);
 
-    conn.setRequestProperty("Authorization", API_KEY.trim());
-    conn.setRequestProperty("Content-Type", "application/json");
-    conn.setDoOutput(true);
+        // Build JSON payload
+        String json = buildJson(chatId, chatTitle, inviteLink, description, isUpdate);
 
-    // Build JSON payload
-    String json = buildJson(chatId, chatTitle, inviteLink, description, isUpdate);
-    System.out.println("Sending to Airtable (" + method + ")");
+        try (OutputStream os = conn.getOutputStream()) {
+            os.write(json.getBytes());
+        }
 
-    try (OutputStream os = conn.getOutputStream()) {
-        os.write(json.getBytes());
-    }
-
-    int responseCode = conn.getResponseCode();
-    if (responseCode != 200 && responseCode != 201) {
-        try (InputStream errorStream = conn.getErrorStream()) {
-            String errorMessage = errorStream != null ? new String(errorStream.readAllBytes()) : "No error message";
-            throw new IOException("Airtable API returned error code: " + responseCode + "\n" + errorMessage);
+        int responseCode = conn.getResponseCode();
+        if (responseCode != 200 && responseCode != 201) {
+            try (InputStream errorStream = conn.getErrorStream()) {
+                String errorMessage = errorStream != null ? new String(errorStream.readAllBytes()) : "No error message";
+                throw new IOException("Airtable API returned error code: " + responseCode + "\n" + errorMessage);
+            }
         }
     }
-}
 
-
+    // Phương thức lấy loại chat
     private String getChatType(String chatId) {
         GetChat getChat = new GetChat();
         getChat.setChatId(chatId);
@@ -98,7 +95,7 @@ public class GroupSaver {
         }
     }
 
-    // hàm lấy description của chat
+    // Phương thức lấy mô tả của chat
     private String getChatDescription(String chatId, String chatType) {
         try {
             Chat chat = bot.execute(new GetChat(chatId));
@@ -109,15 +106,98 @@ public class GroupSaver {
         }
     }
 
-    // hàm lấy record đã tồn tại trong airtable
+    // Phương thức lấy thông tin một nhóm cụ thể
+    public Map<String, String> getGroupInfo(Long chatId) throws IOException {
+        System.out.println("Attempting to fetch group info for chatId: " + chatId);
+        String urlString = String.format("https://api.airtable.com/v0/%s/%s?filterByFormula=({GroupId}='%s')", 
+            BASE_ID, TABLE_NAME, chatId);
+        URL url = new URL(urlString);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+        conn.setRequestMethod("GET");
+        conn.setRequestProperty("Authorization", API_KEY.trim());
+        conn.setRequestProperty("Content-Type", "application/json");
+
+        int responseCode = conn.getResponseCode();
+        if (responseCode == 200) {
+            try (InputStream is = conn.getInputStream()) {
+                JsonNode response = objectMapper.readTree(is);
+                JsonNode records = response.get("records");
+                if (records != null && records.size() > 0) {
+                    JsonNode record = records.get(0);
+                    JsonNode fields = record.get("fields");
+
+                    Map<String, String> groupInfo = new HashMap<>();
+                    groupInfo.put("groupName", fields.has("GroupName") ? fields.get("GroupName").asText() : "Unknown Group");
+                    groupInfo.put("inviteLink", fields.has("InviteLink") ? fields.get("InviteLink").asText() : "No invite link available");
+                    groupInfo.put("description", fields.has("Description") ? fields.get("Description").asText() : "No description available");
+                    System.out.println("Successfully fetched group info: " + groupInfo);
+                    return groupInfo;
+                } else {
+                    System.out.println("No records found for chatId: " + chatId);
+                }
+            }
+        } else {
+            try (InputStream errorStream = conn.getErrorStream()) {
+                String errorMessage = errorStream != null ? new String(errorStream.readAllBytes()) : "No error message";
+                System.out.println("Failed to fetch group info. Response code: " + responseCode + ", Error: " + errorMessage);
+                throw new IOException("Failed to retrieve group info. Response code: " + responseCode + "\n" + errorMessage);
+            }
+        }
+        System.out.println("No group info available for chatId: " + chatId);
+        return null;
+    }
+
+    // Phương thức mới để lấy tất cả thông tin nhóm
+    public List<Map<String, String>> getAllGroupInfo() throws IOException {
+        System.out.println("Attempting to fetch all group info");
+        String urlString = "https://api.airtable.com/v0/" + BASE_ID + "/" + TABLE_NAME;
+        URL url = new URL(urlString);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+        conn.setRequestMethod("GET");
+        conn.setRequestProperty("Authorization", API_KEY.trim());
+        conn.setRequestProperty("Content-Type", "application/json");
+
+        int responseCode = conn.getResponseCode();
+        if (responseCode == 200) {
+            try (InputStream is = conn.getInputStream()) {
+                JsonNode response = objectMapper.readTree(is);
+                JsonNode records = response.get("records");
+                List<Map<String, String>> allGroupInfo = new ArrayList<>();
+                if (records != null && records.size() > 0) {
+                    for (JsonNode record : records) {
+                        JsonNode fields = record.get("fields");
+                        Map<String, String> groupInfo = new HashMap<>();
+                        groupInfo.put("groupId", fields.has("GroupId") ? fields.get("GroupId").asText() : "Unknown");
+                        groupInfo.put("groupName", fields.has("GroupName") ? fields.get("GroupName").asText() : "Unknown Group");
+                        groupInfo.put("inviteLink", fields.has("InviteLink") ? fields.get("InviteLink").asText() : "No invite link available");
+                        groupInfo.put("description", fields.has("Description") ? fields.get("Description").asText() : "No description available");
+                        allGroupInfo.add(groupInfo);
+                    }
+                    System.out.println("Successfully fetched all group info: " + allGroupInfo.size() + " records");
+                    return allGroupInfo;
+                } else {
+                    System.out.println("No records found in Airtable");
+                }
+            }
+        } else {
+            try (InputStream errorStream = conn.getErrorStream()) {
+                String errorMessage = errorStream != null ? new String(errorStream.readAllBytes()) : "No error message";
+                System.out.println("Failed to fetch all group info. Response code: " + responseCode + ", Error: " + errorMessage);
+                throw new IOException("Failed to retrieve all group info. Response code: " + responseCode + "\n" + errorMessage);
+            }
+        }
+        System.out.println("No group info available");
+        return new ArrayList<>();
+    }
+
     private String[] getExistingRecord(String chatId) throws IOException {
-        
         String urlString = "https://api.airtable.com/v0/" + BASE_ID + "/" + TABLE_NAME + "?filterByFormula=GroupId='" + chatId + "'";
         URL url = new URL(urlString);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
         conn.setRequestProperty("Authorization", API_KEY.trim());
-        //System.out.println("Using API_KEY for GET: " + API_KEY.trim()); ko cần thiết nữa vì đã lưu được grp rồi
 
         int responseCode = conn.getResponseCode();
         if (responseCode != 200) {
@@ -140,7 +220,6 @@ public class GroupSaver {
         return new String[] { null, null };
     }
 
-    // hàm tạo json gửi airtable
     private String buildJson(String chatId, String chatTitle, String inviteLink, String description, boolean isUpdate) {
         String fields = String.format(
             "\"GroupId\": \"%s\", \"GroupName\": \"%s\", \"Description\": \"%s\"",
@@ -152,7 +231,6 @@ public class GroupSaver {
         return "{ \"fields\": { " + fields + " } }";
     }
 
-    // hàm thoát các ký tự đặc biệt trong json
     private String escapeJson(String input) {
         return input == null ? "" : input.replace("\"", "\\\"");
     }

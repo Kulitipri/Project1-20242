@@ -30,7 +30,7 @@ public class ViewSchedules {
             return;
         }
 
-        // Lấy danh sách lịch học trong nhóm từ ScheduleManager
+        // Lấy danh sách lịch học trong nhóm từ ScheduleManager (đã làm sạch)
         Map<String, ScheduleRecord> groupSchedules = scheduleManager.getSchedulesByGroup(chatId);
 
         if (groupSchedules.isEmpty()) {
@@ -44,7 +44,8 @@ public class ViewSchedules {
             ScheduleRecord record = entry.getValue();
             response.append("📌 Schedule ID: `").append(record.getId()).append("`\n")
                     .append("📘 Subject: ").append(record.getSubject()).append("\n")
-                    .append("🕒 Time: ").append(record.getTime()).append("\n")
+                    .append("🕒 Start Time: ").append(record.getTime()).append("\n")
+                    .append("⏰ End Time: ").append(record.getEndTime() != null ? record.getEndTime() : "Not specified").append("\n")
                     .append("🏫 Location: ").append(record.getLocation()).append("\n\n");
         }
 

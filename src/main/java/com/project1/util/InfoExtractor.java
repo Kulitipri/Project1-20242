@@ -1,7 +1,7 @@
 package com.project1.util;
 
-import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 
 public class InfoExtractor {
 
-    private static final DateTimeFormatter OUTPUT_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+    private static final DateTimeFormatter OUTPUT_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm").withZone(ZoneId.of("Asia/Ho_Chi_Minh"));
     private static final ZoneId VIETNAM_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     // Ánh xạ để chuẩn hóa tên môn học
@@ -66,16 +66,18 @@ public class InfoExtractor {
         SUBJECT_MAPPING.put("ta", "Tiếng Anh");
     }
 
-    // Regex được cải tiến để khớp chính xác hơn
-    private static final String TIME_PATTERN = "\\b(\\d{1,2}h(\\d{2})?(\\s?(am|pm|sáng|chiều|tối))?)\\b" +
-            "|\\b(\\d{1,2}\\s?(giờ)?(\\s?(am|pm|sáng|chiều|tối))?)\\b" +
-            "|\\b(today|tomorrow|ngày mai|nay|hôm nay|sáng mai|chiều mai|tối mai|ngày kia|ngày kìa|chiều nay|tối nay)\\b";
-    
+    // TIME_PATTERN
+    private static final String TIME_PATTERN = "\\b((\\d{1,2})h(\\d{2})?\\s*(?:-|[đđ]ến|t tới)\\s*(\\d{1,2})h(\\d{2})?\\s*(?:sáng|chiều|tối)?)|" +
+            "(từ\\s+(\\d{1,2})h(\\d{2})?\\s+(tới|[đđ]ến)\\s+(\\d{1,2})h(\\d{2})?\\s*(?:sáng|chiều|tối)?)|" +
+            "(\\d{1,2}h\\d{2}|\\d{1,2}:\\d{2})(\\s?(am|pm|sáng|chiều|tối))?" +
+            "|(\\d{1,2}\\s?(giờ)?\\s?(\\d{2})?\\s?(phút)?(\\s?(am|pm|sáng|chiều|tối))?)\\b|" +
+            "\\b(today|tomorrow|ngày mai|nay|hôm nay|sáng mai|chiều mai|tối mai|ngày kia|ngày kìa|chiều nay|tối nay)\\b";
+
     private static final String LOCATION_PATTERN = "\\b((room|phòng|P)\\s?\\d{1,4}|" +
             "(floor|tầng)\\s?\\d{1,2}|" +
             "((class|lớp|tiết|ca)\\s?[A-Z]?\\d{1,2})|" +
             "((building|tòa nhà|toà nhà|tòa|toà)?\\s?[A-Z]{1}\\d{0,2}\\s?\\d{1,4}))\\b";
-    
+
     private static final String SUBJECT_PATTERN = "\\b(xstk|Xác suất thống kê|xác suất thống kê|xác suất|" +
             "vldc|vlđc|Vật lý đại cương|vật lý đại cương|vật lý|Triết học|triết|" +
             "Kinh tế chính trị|kinh tế chính trị|ktct|Chủ nghĩa xã hội khoa học|chủ nghĩa xã hội khoa học|cnxh|" +
@@ -93,9 +95,8 @@ public class InfoExtractor {
     public static Map<String, List<String>> extractInfo(String text) {
         Map<String, List<String>> result = new HashMap<>();
 
-        // Tìm kiếm các thông tin
         List<String> rawTimes = findMatches(TIME_PATTERN, text);
-        List<String> formattedTimes = convertTimes(rawTimes);
+        List<String> formattedTimes = convertTimes(rawTimes, text);
         result.put("Time", formattedTimes);
         result.put("Location", findMatches(LOCATION_PATTERN, text));
         result.put("Subject", normalizeSubjects(findMatches(SUBJECT_PATTERN, text)));
@@ -125,76 +126,120 @@ public class InfoExtractor {
     }
 
     // Chuyển đổi biểu thức thời gian thành định dạng dd/MM/yyyy HH:mm
-    private static List<String> convertTimes(List<String> times) {
+    private static List<String> convertTimes(List<String> times, String fullText) {
         List<String> formattedTimes = new ArrayList<>();
-        LocalDateTime now = LocalDateTime.now(VIETNAM_ZONE);
+        ZonedDateTime now = ZonedDateTime.now(VIETNAM_ZONE);
+        ZonedDateTime baseDate = now.toLocalDate().atStartOfDay(VIETNAM_ZONE);
 
-        // Xử lý kết hợp các phần thời gian trong fullText
-        String timeContext = "";
-        for (String time : times) {
-            timeContext += time + " ";
-        }
-        timeContext = timeContext.trim();
-
-        // Nếu không tìm thấy thời gian cụ thể, mặc định là hôm nay 8:00
-        if (timeContext.isEmpty()) {
-            formattedTimes.add(now.toLocalDate().atStartOfDay().withHour(8).format(OUTPUT_FORMAT));
-            return formattedTimes;
+        // Điều chỉnh baseDate dựa trên ngữ cảnh
+        if (fullText.toLowerCase().contains("tomorrow") || fullText.toLowerCase().contains("ngày mai") || fullText.toLowerCase().contains("mai")) {
+            baseDate = baseDate.plusDays(1);
+        } else if (fullText.toLowerCase().contains("today") || fullText.toLowerCase().contains("hôm nay") || fullText.toLowerCase().contains("nay")) {
+            baseDate = baseDate.withYear(now.getYear()).withMonth(now.getMonthValue()).withDayOfMonth(now.getDayOfMonth());
         }
 
-        LocalDateTime result = parseTimeExpression(timeContext, now);
-        if (result != null) {
-            formattedTimes.add(result.format(OUTPUT_FORMAT));
-        } else {
-            // Nếu không parse được, mặc định là ngày mai 8:00
-            result = now.toLocalDate().plusDays(1).atStartOfDay().withHour(8);
-            formattedTimes.add(result.format(OUTPUT_FORMAT));
+        // Xác định ngữ cảnh từ toàn bộ văn bản
+        boolean isSang = fullText.toLowerCase().contains("sáng") && !fullText.toLowerCase().contains("chiều") && !fullText.toLowerCase().contains("tối");
+        boolean isChieu = fullText.toLowerCase().contains("chiều") && !fullText.toLowerCase().contains("sáng") && !fullText.toLowerCase().contains("tối");
+        boolean isToi = fullText.toLowerCase().contains("tối") && !fullText.toLowerCase().contains("sáng") && !fullText.toLowerCase().contains("chiều");
+
+        for (String timeStr : times) {
+            timeStr = timeStr.toLowerCase().trim();
+            System.out.println("Processing time string: " + timeStr); // Debug
+            Matcher matcher = Pattern.compile("(\\d{1,2})h(\\d{2})?\\s*(?:-|[đđ]ến|t tới)\\s*(\\d{1,2})h(\\d{2})?").matcher(timeStr);
+            if (matcher.find()) {
+                String startHourStr = matcher.group(1);
+                String startMinuteStr = matcher.group(2);
+                String endHourStr = matcher.group(3);
+                String endMinuteStr = matcher.group(4);
+                System.out.println("Groups: startHour=" + startHourStr + ", startMinute=" + startMinuteStr + ", endHour=" + endHourStr + ", endMinute=" + endMinuteStr); // Debug
+
+                if (startHourStr == null || endHourStr == null) continue;
+
+                int startHour = parseHourOrDefault(startHourStr, 0);
+                int startMinute = startMinuteStr != null ? parseMinuteOrDefault(startMinuteStr, 0) : 0;
+                int endHour = parseHourOrDefault(endHourStr, 0);
+                int endMinute = endMinuteStr != null ? parseMinuteOrDefault(endMinuteStr, 0) : 0;
+
+                // Điều chỉnh giờ dựa trên ngữ cảnh
+                if (isSang && startHour >= 0 && startHour <= 11 && endHour >= 0 && endHour <= 11) {
+                    // Giữ nguyên cho buổi sáng
+                } else if (isChieu && startHour >= 12 && startHour <= 17 && endHour >= 12 && endHour <= 17) {
+                    // Giữ nguyên cho buổi chiều
+                } else if (isToi && startHour >= 18 && startHour <= 23 && endHour >= 18 && endHour <= 23) {
+                    // Giữ nguyên cho buổi tối
+                } else if (isSang && (startHour < 0 || startHour > 11 || endHour < 0 || endHour > 11)) {
+                    startHour += 12; endHour += 12; // Điều chỉnh nếu không phải sáng
+                } else if (isChieu && (startHour < 12 || startHour > 17 || endHour < 12 || endHour > 17)) {
+                    startHour += 12; endHour += 12; // Điều chỉnh nếu không phải chiều
+                } else if (isToi && (startHour < 18 || startHour > 23 || endHour < 18 || endHour > 23)) {
+                    startHour += 12; endHour += 12; // Điều chỉnh nếu không phải tối
+                }
+
+                ZonedDateTime startTime = baseDate.withHour(startHour).withMinute(startMinute).withZoneSameInstant(VIETNAM_ZONE);
+                ZonedDateTime endTime = baseDate.withHour(endHour).withMinute(endMinute).withZoneSameInstant(VIETNAM_ZONE);
+
+                // Thêm cả startTime và endTime mà không lọc thời gian tại đây
+                formattedTimes.add(startTime.format(OUTPUT_FORMAT));
+                if (!endTime.isBefore(startTime)) {
+                    formattedTimes.add(endTime.format(OUTPUT_FORMAT));
+                }
+            } else {
+                Matcher singleMatcher = Pattern.compile("(\\d{1,2})h(\\d{2})?").matcher(timeStr);
+                if (singleMatcher.find()) {
+                    String hourStr = singleMatcher.group(1);
+                    String minuteStr = singleMatcher.group(2);
+                    if (hourStr == null) continue;
+
+                    int hour = parseHourOrDefault(hourStr, 0);
+                    int minute = minuteStr != null ? parseMinuteOrDefault(minuteStr, 0) : 0;
+                    formattedTimes.add(baseDate.withHour(hour).withMinute(minute).withZoneSameInstant(VIETNAM_ZONE).format(OUTPUT_FORMAT));
+
+                    if (isSang && hour >= 0 && hour <= 11) {
+                        // Giữ nguyên
+                    } else if (isChieu && hour >= 12 && hour <= 17) {
+                        // Giữ nguyên
+                    } else if (isToi && hour >= 18 && hour <= 23) {
+                        // Giữ nguyên
+                    } else if (isSang && (hour < 0 || hour > 11)) {
+                        hour += 12;
+                    } else if (isChieu && (hour < 12 || hour > 17)) {
+                        hour += 12;
+                    } else if (isToi && (hour < 18 || hour > 23)) {
+                        hour += 12;
+                    }
+
+                    ZonedDateTime singleTime = baseDate.withHour(hour).withMinute(minute).withZoneSameInstant(VIETNAM_ZONE);
+                    formattedTimes.add(singleTime.format(OUTPUT_FORMAT));
+                }
+            }
+        }
+
+        if (formattedTimes.isEmpty()) {
+            ZonedDateTime defaultTime = now.toLocalDate().plusDays(1).atStartOfDay(VIETNAM_ZONE).withHour(8);
+            formattedTimes.add(defaultTime.format(OUTPUT_FORMAT));
         }
 
         return formattedTimes;
     }
 
-    private static LocalDateTime parseTimeExpression(String time, LocalDateTime baseTime) {
-        time = time.toLowerCase().trim();
-        LocalDateTime result = baseTime.toLocalDate().atStartOfDay(); // Bắt đầu từ 00:00 của ngày
-
-        // Xử lý ngày
-        if (time.contains("today") || time.contains("nay") || time.contains("hôm nay")) {
-            result = result.withYear(baseTime.getYear()).withMonth(baseTime.getMonthValue()).withDayOfMonth(baseTime.getDayOfMonth());
-        } else if (time.contains("tomorrow") || time.contains("ngày mai")) {
-            result = result.plusDays(1);
-        } else if (time.contains("ngày kia") || time.contains("ngày kìa")) {
-            result = result.plusDays(2);
+    private static int parseHourOrDefault(String hourStr, int defaultValue) {
+        try {
+            int hour = Integer.parseInt(hourStr);
+            return Math.max(0, Math.min(23, hour));
+        } catch (NumberFormatException e) {
+            System.err.println("Invalid hour string: " + hourStr);
+            return defaultValue;
         }
+    }
 
-        // Xử lý giờ và phút
-        int hour = -1;
-        int minute = 0;
-        Pattern hourPattern = Pattern.compile("(\\d{1,2})(h(\\d{2})?)?");
-        Matcher matcher = hourPattern.matcher(time);
-        if (matcher.find()) {
-            hour = Integer.parseInt(matcher.group(1));
-            if (matcher.group(3) != null) {
-                minute = Integer.parseInt(matcher.group(3));
-            }
+    private static int parseMinuteOrDefault(String minuteStr, int defaultValue) {
+        try {
+            int minute = Integer.parseInt(minuteStr);
+            return Math.max(0, Math.min(59, minute));
+        } catch (NumberFormatException e) {
+            System.err.println("Invalid minute string: " + minuteStr);
+            return defaultValue;
         }
-
-        // Áp dụng giờ và phút nếu có
-        if (hour != -1) {
-            result = result.withHour(hour).withMinute(minute);
-        }
-
-        // Xử lý thời gian trong ngày (sáng, chiều, tối) và điều chỉnh giờ
-        if (time.contains("sáng") || time.contains("am")) {
-            if (hour == -1) result = result.withHour(8).withMinute(0); // Mặc định sáng 8:00
-        } else if (time.contains("chiều") || time.contains("pm")) {
-            if (hour != -1 && hour < 12) result = result.withHour(hour + 12); // Chuyển sang 24h
-            else if (hour == -1) result = result.withHour(14).withMinute(0); // Mặc định chiều 14:00
-        } else if (time.contains("tối")) {
-            if (hour == -1) result = result.withHour(19).withMinute(0); // Mặc định tối 19:00
-        }
-
-        // Đảm bảo không trả về thời gian quá khứ
-        return result.isBefore(LocalDateTime.now(VIETNAM_ZONE)) ? null : result;
     }
 }
