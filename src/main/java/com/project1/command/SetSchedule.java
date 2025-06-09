@@ -25,10 +25,12 @@ public class SetSchedule {
     private final AbsSender bot;
     private final IsUserAdmin adminChecker;
     private final ScheduleManager scheduleManager = ScheduleManager.getInstance();
+    private final Map<String, Long> pollChatMap; // Thêm trường này
 
-    public SetSchedule(AbsSender bot) {
+    public SetSchedule(AbsSender bot, Map<String, Long> pollChatMap) { // Sửa constructor
         this.bot = bot;
         this.adminChecker = new IsUserAdmin(bot);
+        this.pollChatMap = pollChatMap;
     }
 
     public void handle(Message message) {
@@ -40,6 +42,7 @@ public class SetSchedule {
 
         String key = userId + "_" + chatId;
         TempScheduleState temp = userStates.get(key);
+        // Sửa lỗi: chỉ xử lý tiếp nếu user đang ở trạng thái tạo schedule
         if (temp == null) return;
 
         // Xử lý nhập Group ID ở private chat
@@ -131,27 +134,50 @@ public class SetSchedule {
 
             case 3: // Nhập location
                 temp.record.location = text;
-
-                // Tạo lịch và poll
                 String scheduleId = scheduleManager.addSchedule(
                     temp.record.subject,
-                    temp.record.time,
+                    temp.record.time, 
                     temp.record.endTime,
                     temp.record.location,
-                    temp.record.groupId
+                    temp.record.groupId,
+                    temp.record.creatorId
                 );
 
-                send(chatId, "✅ *Schedule created successfully!* 🎉\n" +
+                // Tạo message thông báo
+                String successMessage = "✅ *Schedule created successfully!* 🎉\n" +
                         "   📘 *Subject:* " + temp.record.subject + "\n" +
                         "   🕒 *Start Time:* " + temp.record.time + "\n" +
                         "   ⏰ *End Time:* " + temp.record.endTime + "\n" +
                         "   🏫 *Location:* " + temp.record.location + "\n\n" +
-                        "👥 *Members can confirm with /confirm " + scheduleId + "*");
+                        "👥 *Members can confirm with /confirm " + scheduleId + "*";
 
-                String pollQuestion = "📢Vote for schedule " + scheduleId + "\n" +
-                        "Do you agree with this schedule?";
-                createPoll(chatId, pollQuestion);
+                String pollQuestion = "Do you agree with the schedule?\n" +
+                        "📘 Subject: " + temp.record.subject + "\n" +
+                        "🕒 Start Time: " + temp.record.time + "\n" +
+                        "⏰ End Time: " + temp.record.endTime + "\n" +
+                        "🏫 Location: " + temp.record.location;
 
+                // Nếu đang trong private chat, gửi message và poll đến group
+                if ("private".equals(chatType)) {
+                    send(temp.record.groupId, successMessage); // Gửi đến group
+                    String pollId = createPoll(temp.record.groupId, pollQuestion); // Tạo poll trong group
+                    if (pollId != null) {
+                        pollChatMap.put(pollId, temp.record.groupId);
+                        scheduleManager.mapPollToSchedule(pollId, scheduleId);
+                    }
+                    // Gửi thông báo xác nhận trong private chat
+                    send(chatId, "✅ Schedule has been created and announced in the group!");
+                } else {
+                    // Trong group chat, hoạt động như bình thường
+                    send(chatId, successMessage);
+                    String pollId = createPoll(chatId, pollQuestion);
+                    if (pollId != null) {
+                        pollChatMap.put(pollId, chatId);
+                        scheduleManager.mapPollToSchedule(pollId, scheduleId);
+                    }
+                }
+
+                // Lưu vào Airtable và xóa state
                 ScheduleSaver.save(
                     temp.record.subject,
                     temp.record.time,
@@ -161,12 +187,11 @@ public class SetSchedule {
                     temp.chatTitle,
                     scheduleId
                 );
-
                 userStates.remove(key);
                 break;
 
             default:
-                send(chatId, "❌ Invalid step.");
+                // Sửa lỗi: nếu không đúng bước, không làm gì cả
                 break;
         }
     }
@@ -181,7 +206,7 @@ public class SetSchedule {
         }
 
         String groupTitle = message.getChat().getTitle();
-        ScheduleRecord record = new ScheduleRecord(null, null, null, null, null, groupId);
+        ScheduleRecord record = new ScheduleRecord(null, null, null, null, null, groupId, userId); // Thêm creatorId
         TempScheduleState temp = new TempScheduleState(record, -1, groupTitle);
 
         if ("private".equals(chatType)) {
@@ -195,7 +220,7 @@ public class SetSchedule {
         userStates.put(key, temp);
     }
 
-    private void createPoll(Long chatId, String question) {
+    private String createPoll(Long chatId, String question) {
         SendPoll poll = new SendPoll();
         poll.setChatId(chatId.toString());
         poll.setQuestion(question);
@@ -204,10 +229,11 @@ public class SetSchedule {
         poll.setType("regular");
 
         try {
-            bot.execute(poll);
+            return bot.execute(poll).getPoll().getId();
         } catch (TelegramApiException e) {
             System.err.println("❌ Error creating poll: " + e.getMessage());
             send(chatId, "❌ Failed to create poll. Please try again.");
+            return null;
         }
     }
 

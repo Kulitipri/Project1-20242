@@ -7,6 +7,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -86,17 +87,26 @@ public class AirtableClient {
         return parsedRecords;
     }
 
-    public void saveConfirmation(String scheduleId, String userId, String userName) {
+    public void saveConfirmation(String scheduleId, String userId, String userName, String groupId) {
         try {
+            // Kiểm tra trước khi lưu
+            if (isAlreadyConfirmed(scheduleId, userId)) {
+                System.out.println("User " + userId + " has already confirmed schedule " + scheduleId + ". Skipping save.");
+                return;
+            }
+
+            String confirmationTable = BotConfig.getConfirmationTableName();
+            String urlString = "https://api.airtable.com/v0/" + BASE_ID + "/" + confirmationTable;
+            
             JSONObject fields = new JSONObject();
             fields.put("scheduleId", scheduleId);
             fields.put("userId", userId);
             fields.put("userName", userName);
+            fields.put("groupId", groupId); // Thêm groupId vào fields
 
             JSONObject record = new JSONObject();
             record.put("fields", fields);
 
-            String urlString = API_URL;
             URL url = new URL(urlString);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 
@@ -124,7 +134,9 @@ public class AirtableClient {
 
     public boolean isAlreadyConfirmed(String scheduleId, String userId) {
         try {
-            String urlString = API_URL + "?filterByFormula=AND(scheduleId='" + scheduleId + "',userId='" + userId + "')";
+            String confirmationTable = BotConfig.getConfirmationTableName();
+            String urlString = "https://api.airtable.com/v0/" + BASE_ID + "/" + confirmationTable +
+                    "?filterByFormula=AND({ScheduleId}='" + scheduleId + "',{UserId}='" + userId + "')" ;
             URL url = new URL(urlString);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 
@@ -134,7 +146,9 @@ public class AirtableClient {
 
             int responseCode = conn.getResponseCode();
             if (responseCode != HttpURLConnection.HTTP_OK) {
-                throw new IOException("Unexpected code " + responseCode);
+                System.err.println("Error checking confirmation: HTTP " + responseCode + " - " + conn.getResponseMessage());
+                conn.disconnect();
+                return false;
             }
 
             String responseBody = readResponse(conn);
@@ -142,11 +156,317 @@ public class AirtableClient {
             JSONArray records = json.getJSONArray("records");
 
             boolean result = records.length() > 0;
+            if (result) {
+                System.out.println("User " + userId + " has already confirmed schedule " + scheduleId);
+            }
             conn.disconnect();
             return result;
         } catch (IOException e) {
             System.err.println("Error checking confirmation: " + e.getMessage());
             return false;
         }
+    }
+
+    public List<Map<String, Object>> getConfirmationsByUserId(String userId) {
+        try {
+            String confirmationTable = BotConfig.getConfirmationTableName();
+            String urlString = "https://api.airtable.com/v0/" + BASE_ID + "/" + confirmationTable + "?filterByFormula=UserId='" + userId + "'";
+            URL url = new URL(urlString);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", API_KEY);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                System.err.println("Error fetching confirmations: HTTP " + responseCode + " - " + conn.getResponseMessage());
+                conn.disconnect();
+                return new ArrayList<>();
+            }
+
+            String responseBody = readResponse(conn);
+            org.json.JSONObject json = new org.json.JSONObject(responseBody);
+            org.json.JSONArray records = json.optJSONArray("records");
+
+            List<Map<String, Object>> result = new ArrayList<>();
+            if (records != null) {
+                for (int i = 0; i < records.length(); i++) {
+                    org.json.JSONObject record = records.getJSONObject(i);
+                    Map<String, Object> recordMap = record.toMap();
+                    result.add(recordMap);
+                }
+            }
+            conn.disconnect();
+            return result;
+        } catch (IOException e) {
+            System.err.println("Error fetching confirmations: " + e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Lấy danh sách lịch học theo nhiều ScheduleId từ Airtable.
+     */
+    public List<Map<String, Object>> getSchedulesByIds(Set<String> scheduleIds) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (scheduleIds == null || scheduleIds.isEmpty()) return result;
+
+        try {
+            // Xây dựng filterByFormula dạng OR(ScheduleId='SCH1',ScheduleId='SCH2',...)
+            StringBuilder filter = new StringBuilder("OR(");
+            boolean first = true;
+            for (String id : scheduleIds) {
+                if (!first) filter.append(",");
+                filter.append("ScheduleId='").append(id).append("'");
+                first = false;
+            }
+            filter.append(")");
+
+            String urlString = API_URL + "?filterByFormula=" + java.net.URLEncoder.encode(filter.toString(), "UTF-8");
+            URL url = new URL(urlString);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", API_KEY);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                System.err.println("Error fetching schedules by ids: HTTP " + responseCode + " - " + conn.getResponseMessage());
+                conn.disconnect();
+                return result;
+            }
+
+            String responseBody = readResponse(conn);
+            JSONObject json = new JSONObject(responseBody);
+            JSONArray records = json.optJSONArray("records");
+
+            if (records != null) {
+                result = parseRecords(records);
+            }
+            conn.disconnect();
+        } catch (IOException e) {
+            System.err.println("Error fetching schedules by ids: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * Xóa xác nhận của một user cho một schedule trong bảng confirmation.
+     */
+    public void deleteConfirmation(String scheduleId, String userId) {
+        try {
+            String confirmationTable = BotConfig.getConfirmationTableName();
+            // Lấy recordId của xác nhận cần xóa
+            String urlString = "https://api.airtable.com/v0/" + BASE_ID + "/" + confirmationTable +
+                                    "?filterByFormula=AND({ScheduleId}='" + scheduleId + "',{UserId}='" + userId + "')";
+                            URL url = new URL(urlString);
+                            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                
+                            conn.setRequestMethod("GET");
+                            conn.setRequestProperty("Authorization", API_KEY);
+                            conn.setRequestProperty("Content-Type", "application/json");
+                
+                            int responseCode = conn.getResponseCode();
+                            if (responseCode != HttpURLConnection.HTTP_OK) {
+                                System.err.println("Error fetching confirmation record: HTTP " + responseCode + " - " + conn.getResponseMessage());
+                                conn.disconnect();
+                                return;
+                            }
+                
+                            String responseBody = readResponse(conn);
+                            JSONObject json = new JSONObject(responseBody);
+                            JSONArray records = json.optJSONArray("records");
+                
+                            if (records != null && records.length() > 0) {
+                                String recordId = records.getJSONObject(0).getString("id");
+                                String deleteUrlString = "https://api.airtable.com/v0/" + BASE_ID + "/" + confirmationTable + "/" + recordId;
+                                URL deleteUrl = new URL(deleteUrlString);
+                                HttpURLConnection deleteConn = (HttpURLConnection) deleteUrl.openConnection();
+                
+                                deleteConn.setRequestMethod("DELETE");
+                                deleteConn.setRequestProperty("Authorization", API_KEY);
+                
+                                int deleteResponseCode = deleteConn.getResponseCode();
+                                if (deleteResponseCode == HttpURLConnection.HTTP_NO_CONTENT) {
+                                    System.out.println("Confirmation deleted successfully.");
+                                } else {
+                                    System.err.println("Error deleting confirmation: HTTP " + deleteResponseCode + " - " + deleteConn.getResponseMessage());
+                                }
+                                deleteConn.disconnect();
+                            } else {
+                                System.err.println("No confirmation record found for ScheduleId: " + scheduleId + " and UserId: " + userId);
+                            }
+                            conn.disconnect();
+                        } catch (IOException e) {
+                            System.err.println("Error deleting confirmation: " + e.getMessage());
+                        }
+                    }
+
+    /**
+     * Xóa một schedule khỏi bảng schedule trên Airtable theo ScheduleId.
+     */
+    public void deleteSchedule(String scheduleId) {
+        try {
+            // Lấy recordId của schedule cần xóa
+            String urlString = API_URL + "?filterByFormula={ScheduleId}='" + scheduleId + "'";
+            URL url = new URL(urlString);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", API_KEY);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                System.err.println("Error fetching schedule record for delete: HTTP " + responseCode + " - " + conn.getResponseMessage());
+                conn.disconnect();
+                return;
+            }
+
+            String responseBody = readResponse(conn);
+            JSONObject json = new JSONObject(responseBody);
+            JSONArray records = json.optJSONArray("records");
+
+            if (records != null && records.length() > 0) {
+                for (int i = 0; i < records.length(); i++) {
+                    String recordId = records.getJSONObject(i).getString("id");
+                    String deleteUrl = API_URL + "/" + recordId;
+                    HttpURLConnection deleteConn = (HttpURLConnection) new URL(deleteUrl).openConnection();
+                    deleteConn.setRequestMethod("DELETE");
+                    deleteConn.setRequestProperty("Authorization", API_KEY);
+
+                    int deleteResponse = deleteConn.getResponseCode();
+                    if (deleteResponse != HttpURLConnection.HTTP_NO_CONTENT && deleteResponse != HttpURLConnection.HTTP_OK) {
+                        System.err.println("Error deleting schedule: HTTP " + deleteResponse + " - " + deleteConn.getResponseMessage());
+                    } else {
+                        System.out.println("Schedule deleted successfully: " + recordId);
+                    }
+                    deleteConn.disconnect();
+                }
+            } else {
+                System.err.println("No schedule record found to delete for ScheduleId: " + scheduleId);
+            }
+            conn.disconnect();
+        } catch (IOException e) {
+            System.err.println("Error deleting schedule: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Xóa tất cả xác nhận liên quan đến một scheduleId trong bảng confirmation.
+     */
+    public void deleteConfirmationsByScheduleId(String scheduleId) {
+        try {
+            String confirmationTable = BotConfig.getConfirmationTableName();
+            String urlString = "https://api.airtable.com/v0/" + BASE_ID + "/" + confirmationTable +
+                    "?filterByFormula={ScheduleId}='" + scheduleId + "'";
+            URL url = new URL(urlString);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", API_KEY);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                System.err.println("Error fetching confirmations for delete: HTTP " + responseCode + " - " + conn.getResponseMessage());
+                conn.disconnect();
+                return;
+            }
+
+            String responseBody = readResponse(conn);
+            JSONObject json = new JSONObject(responseBody);
+            JSONArray records = json.optJSONArray("records");
+
+            if (records != null && records.length() > 0) {
+                for (int i = 0; i < records.length(); i++) {
+                    String recordId = records.getJSONObject(i).getString("id");
+                    String deleteUrl = "https://api.airtable.com/v0/" + BASE_ID + "/" + confirmationTable + "/" + recordId;
+                    HttpURLConnection deleteConn = (HttpURLConnection) new URL(deleteUrl).openConnection();
+                    deleteConn.setRequestMethod("DELETE");
+                    deleteConn.setRequestProperty("Authorization", API_KEY);
+
+                    int deleteResponse = deleteConn.getResponseCode();
+                    if (deleteResponse != HttpURLConnection.HTTP_NO_CONTENT && deleteResponse != HttpURLConnection.HTTP_OK) {
+                        System.err.println("Error deleting confirmation: HTTP " + deleteResponse + " - " + deleteConn.getResponseMessage());
+                    } else {
+                        System.out.println("Confirmation deleted successfully: " + recordId);
+                    }
+                    deleteConn.disconnect();
+                }
+            } else {
+                System.err.println("No confirmation records found to delete for ScheduleId: " + scheduleId);
+            }
+            conn.disconnect();
+        } catch (IOException e) {
+            System.err.println("Error deleting confirmations by scheduleId: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Kiểm tra xem một schedule có tồn tại trên Airtable không (theo ScheduleId).
+     */
+    public boolean scheduleExists(String scheduleId) {
+        try {
+            String urlString = API_URL + "?filterByFormula={ScheduleId}='" + scheduleId + "'";
+            URL url = new URL(urlString);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", API_KEY);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                conn.disconnect();
+                return false;
+            }
+
+            String responseBody = readResponse(conn);
+            JSONObject json = new JSONObject(responseBody);
+            JSONArray records = json.optJSONArray("records");
+            conn.disconnect();
+            return records != null && records.length() > 0;
+        } catch (IOException e) {
+            System.err.println("Error checking schedule exists: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Lấy groupId của một schedule từ Airtable theo ScheduleId.
+     */
+    public String getGroupIdByScheduleId(String scheduleId) {
+        try {
+            String urlString = API_URL + "?filterByFormula={ScheduleId}='" + scheduleId + "'";
+            URL url = new URL(urlString);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", API_KEY);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                conn.disconnect();
+                return null;
+            }
+
+            String responseBody = readResponse(conn);
+            JSONObject json = new JSONObject(responseBody);
+            JSONArray records = json.optJSONArray("records");
+            if (records != null && records.length() > 0) {
+                JSONObject fields = records.getJSONObject(0).optJSONObject("fields");
+                if (fields != null && fields.has("GroupId")) {
+                    return fields.getString("GroupId");
+                }
+            }
+            conn.disconnect();
+        } catch (IOException e) {
+            System.err.println("Error getting groupId by scheduleId: " + e.getMessage());
+        }
+        return null;
     }
 }

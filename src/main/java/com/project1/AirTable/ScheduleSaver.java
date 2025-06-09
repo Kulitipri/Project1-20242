@@ -67,4 +67,59 @@ public class ScheduleSaver {
     private static String escapeJson(String input) {
         return input != null ? input.replace("\"", "\\\"") : "";
     }
+
+    /**
+     * Xóa một schedule khỏi bảng schedule trên Airtable theo ScheduleId.
+     */
+    public static void deleteByScheduleId(String scheduleId) {
+        try {
+            String urlString = "https://api.airtable.com/v0/" + BASE_ID + "/" + TABLE_NAME +
+                    "?filterByFormula={ScheduleId}='" + scheduleId + "'";
+            URL url = new URL(urlString);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", API_KEY);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode != 200) {
+                System.err.println("Error fetching schedule record for delete: HTTP " + responseCode + " - " + conn.getResponseMessage());
+                conn.disconnect();
+                return;
+            }
+
+            String responseBody = new String(conn.getInputStream().readAllBytes());
+            org.json.JSONObject json = new org.json.JSONObject(responseBody);
+            org.json.JSONArray records = json.optJSONArray("records");
+
+            if (records != null && records.length() > 0) {
+                for (int i = 0; i < records.length(); i++) {
+                    String recordId = records.getJSONObject(i).getString("id");
+                    String deleteUrl = "https://api.airtable.com/v0/" + BASE_ID + "/" + TABLE_NAME + "/" + recordId;
+                    HttpURLConnection deleteConn = (HttpURLConnection) new URL(deleteUrl).openConnection();
+                    deleteConn.setRequestMethod("DELETE");
+                    deleteConn.setRequestProperty("Authorization", API_KEY);
+
+                    int deleteResponse = deleteConn.getResponseCode();
+                    if (deleteResponse != 200 && deleteResponse != 204) {
+                        System.err.println("Error deleting schedule: HTTP " + deleteResponse + " - " + deleteConn.getResponseMessage());
+                    } else {
+                        System.out.println("Schedule deleted successfully: " + recordId);
+                    }
+                    deleteConn.disconnect();
+                }
+            } else {
+                System.err.println("No schedule record found to delete for ScheduleId: " + scheduleId);
+            }
+            conn.disconnect();
+        } catch (IOException e) {
+            System.err.println("Error deleting schedule: " + e.getMessage());
+        }
+    }
+
+    // Thêm hàm tạo scheduleId mới (nếu chưa có)
+    public static String generateScheduleId() {
+        return "SCH" + System.currentTimeMillis();
+    }
 }

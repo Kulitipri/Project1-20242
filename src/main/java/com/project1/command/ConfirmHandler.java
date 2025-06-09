@@ -1,63 +1,60 @@
 package com.project1.command;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.bots.AbsSender;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
+import com.project1.AirTable.AirtableClient;
 import com.project1.AirTable.ConfirmationSaver;
-import com.project1.util.ScheduleManager;
 
 public class ConfirmHandler {
 
     private final AbsSender bot;
-    private final ScheduleManager scheduleManager = ScheduleManager.getInstance();
-
-    private final Map<String, Set<Long>> scheduleConfirmations = new HashMap<>();
+    private final AirtableClient airtableClient = new AirtableClient();
 
     public ConfirmHandler(AbsSender bot) {
         this.bot = bot;
     }
 
-    public void handleConfirm(Message message) {
-        Long chatId = message.getChatId();
-        Long userId = message.getFrom().getId();
-        String userName = message.getFrom().getFirstName();
-        String text = message.getText().trim();
-
-        String[] parts = text.split("\\s+");
-        if (parts.length < 2) {
-            send(chatId, "❌ Please use `/confirm <schedule_id>`\nExample: /confirm SCH123456");
-            return;
-        }
-
-        String scheduleId = parts[1];
-
-        if (!scheduleManager.existsSchedule(scheduleId)) {
+    public void handleConfirm(Long chatId, String scheduleId, Long userId, String userName) {
+        // Kiểm tra schedule tồn tại trên Airtable
+        boolean scheduleExists = airtableClient.scheduleExists(scheduleId);
+        if (!scheduleExists) {
             send(chatId, "❌ Schedule `" + scheduleId + "` does not exist. Please check the schedule ID.");
             return;
         }
 
-        scheduleConfirmations.putIfAbsent(scheduleId, new HashSet<>());
-
-        if (scheduleConfirmations.get(scheduleId).contains(userId)) {
+        // Kiểm tra trên Airtable đã xác nhận chưa (chặn trùng)
+        if (airtableClient.isAlreadyConfirmed(scheduleId, String.valueOf(userId))) {
             send(chatId, "✅ You have already confirmed schedule `" + scheduleId + "`.");
             return;
         }
 
-        scheduleConfirmations.get(scheduleId).add(userId);
-        ConfirmationSaver.save(scheduleId, String.valueOf(userId), userName);
+        // Lấy groupId từ Airtable (nếu cần)
+        String groupId = airtableClient.getGroupIdByScheduleId(scheduleId);
+
+        // Lưu xác nhận lên Airtable
+        ConfirmationSaver.save(scheduleId, String.valueOf(userId), userName, groupId != null ? groupId : "");
+
         send(chatId, "📌 " + userName + " has confirmed schedule `" + scheduleId + "`.");
     }
 
-    public Set<Long> getConfirmedUsers(String scheduleId) {
-        return scheduleConfirmations.getOrDefault(scheduleId, Collections.emptySet());
+    public void handleUnconfirm(Long chatId, String scheduleId, Long userId, String userName) {
+        boolean scheduleExists = airtableClient.scheduleExists(scheduleId);
+        if (!scheduleExists) {
+            send(chatId, "❌ Schedule `" + scheduleId + "` does not exist. Please check the schedule ID.");
+            return;
+        }
+
+        boolean alreadyConfirmed = airtableClient.isAlreadyConfirmed(scheduleId, String.valueOf(userId));
+        if (!alreadyConfirmed) {
+            send(chatId, "⚠️ You have not confirmed schedule `" + scheduleId + "` yet.");
+            return;
+        }
+
+        airtableClient.deleteConfirmation(scheduleId, String.valueOf(userId));
+
+        send(chatId, "❌ " + userName + " has unconfirmed their participation in schedule `" + scheduleId + "`.");
     }
 
     private void send(Long chatId, String text) {

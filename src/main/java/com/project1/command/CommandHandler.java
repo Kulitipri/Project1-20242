@@ -2,6 +2,7 @@ package com.project1.command;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Map;
 
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Message;
@@ -17,17 +18,24 @@ public class CommandHandler {
     private final SetSchedule setScheduleHandler;
     private final ConfirmHandler confirmHandler;
 
-    public CommandHandler(AbsSender bot) {
+
+    public CommandHandler(AbsSender bot, Map<String, Long> pollChatMap) {
         this.bot = bot;
         this.adminChecker = new IsUserAdmin(bot);
-        this.setScheduleHandler = new SetSchedule(bot);
+        this.setScheduleHandler = new SetSchedule(bot, pollChatMap);
         this.confirmHandler = new ConfirmHandler(bot);
         this.viewSchedules = new ViewSchedules(bot); 
         this.groupInfoHandler = new GroupInfoHandler(bot);
+        this.unconfirmHandler = new UnconfirmHandler(bot);
+        this.myConfirmHandler = new MyConfirmHandler(bot);
+        this.deleteScheduleHandler = new DeleteScheduleHandler(bot); // Thêm dòng này
     }
 
     private final ViewSchedules viewSchedules; 
     private final GroupInfoHandler groupInfoHandler; 
+    private final UnconfirmHandler unconfirmHandler;
+    private final MyConfirmHandler myConfirmHandler;
+    private final DeleteScheduleHandler deleteScheduleHandler; // Thêm dòng này
 
     public void handleCommand(Message message) {
     String text = message.getText().trim();
@@ -59,6 +67,7 @@ public class CommandHandler {
             "/set_schedule - Create a new class schedule\n" +
             "/cancel - Cancel schedule creation\n" +
             "/confirm <schedule_id> - Confirm attendance\n" +
+            "/unconfirm <schedule_id> - Unconfirm attendance\n" + // Thêm dòng này
             "/Test - (admin only) Command under development"
         );
         return;
@@ -105,7 +114,14 @@ public class CommandHandler {
     }
 
     if (text.startsWith("/confirm")) {
-        confirmHandler.handleConfirm(message);
+        String userName = message.getFrom().getUserName();
+        String confirmText = message.getText();
+        confirmHandler.handleConfirm(chatId, confirmText, userId, userName);
+        return;
+    }
+
+    if (text.startsWith("/unconfirm")) {
+        unconfirmHandler.handleUnconfirm(message);
         return;
     }
 
@@ -116,6 +132,16 @@ public class CommandHandler {
 
     if (text.startsWith("/group_info")) {
         groupInfoHandler.handle(message);
+        return;
+    }
+
+    if (text.startsWith("/myconfirm")) {
+        myConfirmHandler.handleMyConfirm(message);
+        return;
+    }
+
+    if (text.startsWith("/delete_schedule")) {
+        deleteScheduleHandler.handleDeleteSchedule(message);
         return;
     }
 
