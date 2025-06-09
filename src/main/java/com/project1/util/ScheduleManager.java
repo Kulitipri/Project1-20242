@@ -15,6 +15,7 @@ public class ScheduleManager {
     private static final ScheduleManager INSTANCE = new ScheduleManager();
     private final Map<String, ScheduleRecord> schedules = new ConcurrentHashMap<>(); // id -> record, đảm bảo đa luồng an toàn
     private final AtomicInteger counter = new AtomicInteger(0); // Counter nguyên tử để tạo ID duy nhất
+    private final Map<String, String> pollToScheduleMap = new ConcurrentHashMap<>(); // pollId -> scheduleId
 
     // Constructor private để ngăn tạo instance mới
     private ScheduleManager() {
@@ -33,23 +34,30 @@ public class ScheduleManager {
         return INSTANCE;
     }
 
-    public String addSchedule(String subject, String time, String endTime, String location, Long groupId) {
+    public String addSchedule(
+            String subject,
+            String time,
+            String endTime,
+            String location,
+            Long groupId,
+            Long creatorId
+    ) {
         String id = generateShortId();
-        ScheduleRecord record = new ScheduleRecord(id, subject, time, endTime, location, groupId);
+        ScheduleRecord record = new ScheduleRecord(id, subject, time, endTime, location, groupId, creatorId);
         schedules.put(id, record);
+        System.out.println("DEBUG: Added schedule with scheduleId=" + id + ", chatId=" + groupId + ", creatorId=" + creatorId);
         return id;
+    }
+
+    // Phương thức cũ (nếu cần giữ lại cho tương thích, mặc định creatorId là null)
+    public String addSchedule(String subject, String time, String endTime, String location, Long groupId) {
+        return addSchedule(subject, time, endTime, location, groupId, null);
     }
 
     private String generateShortId() {
         int sequence = counter.getAndIncrement(); // Lấy và tăng counter
         int random = (int) (Math.random() * 100); // Số ngẫu nhiên từ 0-99
         return String.format("SCH%05d%02d", sequence % 100000, random);
-    }
-
-    public boolean confirm(String scheduleId, Long userId) {
-        ScheduleRecord record = schedules.get(scheduleId);
-        if (record == null) return false;
-        return record.confirmUser(userId);
     }
 
     public ScheduleRecord get(String id) {
@@ -166,18 +174,29 @@ public class ScheduleManager {
     }
 
     // Phương thức dọn dẹp lịch đã kết thúc
+    // ĐÃ SỬA: Không tự động xóa schedule khỏi RAM nữa, chỉ log ra nếu cần thiết
     private void cleanupPastSchedules() {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm").withZone(ZoneId.of("Asia/Ho_Chi_Minh"));
         ZonedDateTime now = ZonedDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh"));
-        schedules.entrySet().removeIf(entry -> {
+        for (Map.Entry<String, ScheduleRecord> entry : schedules.entrySet()) {
             ScheduleRecord record = entry.getValue();
             try {
                 ZonedDateTime endTime = ZonedDateTime.parse(record.getEndTime(), formatter);
-                return endTime.isBefore(now);
+                if (endTime.isBefore(now)) {
+                    // Không xóa khỏi RAM, chỉ log ra để theo dõi
+                    System.out.println("INFO: Schedule " + record.getId() + " has ended but remains in RAM.");
+                }
             } catch (Exception e) {
                 System.err.println("Error parsing endTime for schedule " + record.getId() + ": " + e.getMessage());
-                return false; // Giữ lại nếu không parse được
             }
-        });
+        }
+    }
+
+    public String getScheduleIdByPollId(String pollId) {
+        return pollToScheduleMap.get(pollId);
+    }
+
+    public void mapPollToSchedule(String pollId, String scheduleId) {
+        pollToScheduleMap.put(pollId, scheduleId);
     }
 }

@@ -13,7 +13,7 @@ public class ConfirmationSaver {
     private static final String TABLE_NAME = BotConfig.getConfirmationTableName(); // Giả định tên bảng xác nhận
     private static final String API_KEY = BotConfig.getAirtableToken();
 
-    public static void save(String scheduleId, String userId, String userName) {
+    public static void save(String scheduleId, String userId, String userName, String groupId) {
         try {
             String urlString = "https://api.airtable.com/v0/" + BASE_ID + "/" + TABLE_NAME;
             URL url = new URL(urlString);
@@ -28,11 +28,13 @@ public class ConfirmationSaver {
                 "{ \"fields\": { " +
                 "\"ScheduleId\": \"%s\", " +
                 "\"UserId\": \"%s\", " +
-                "\"UserName\": \"%s\" " +
+                "\"UserName\": \"%s\", " +
+                "\"GroupId\": \"%s\" " +
                 "} }",
                 escapeJson(scheduleId),
                 escapeJson(userId),
-                escapeJson(userName)
+                escapeJson(userName),
+                escapeJson(groupId)
             );
 
             try (OutputStream os = conn.getOutputStream()) {

@@ -33,7 +33,6 @@ import com.project1.util.ScheduleManager;
 
 public class ChatLoggerBot extends TelegramLongPollingBot {
 
-    private final CommandHandler commandHandler = new CommandHandler(this);
     private final LogSaver airtable = new LogSaver();
     private final Map<String, Map<String, List<String>>> pendingScheduleRequests = new ConcurrentHashMap<>();
     private final ScheduleManager scheduleManager = ScheduleManager.getInstance();
@@ -41,6 +40,7 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
     private final Map<Long, Timer> timers = new ConcurrentHashMap<>(); // Timer cho mỗi nhóm
     private final IsUserAdmin adminChecker = new IsUserAdmin(this);
     private final Map<String, Long> pollChatMap = new HashMap<>(); // Ánh xạ pollId với chatId
+    private final CommandHandler commandHandler = new CommandHandler(this, pollChatMap);
 
     @Override
     public String getBotUsername() {
@@ -117,14 +117,9 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
                                 return;
                             }
 
-                            String scheduleId = scheduleManager.addSchedule(subject, time, endTime, location, chatId);
+                            String scheduleId = scheduleManager.addSchedule(subject, time, endTime, location, chatId, userId); // Thêm creatorId
                             ScheduleSaver.save(subject, time, endTime, location, chatId.toString(), chatTitle != null ? chatTitle : "Unknown Group", scheduleId);
-                            boolean skip15Min = startTime.isBefore(now.plusMinutes(15));
-                            Timer groupTimer = timers.computeIfAbsent(chatId, k -> new Timer(true));
-                            scheduleManager.scheduleNotifications(scheduleId, chatId, groupTimer, notificationMessage -> send(chatId, notificationMessage), skip15Min);
-                            scheduleManager.scheduleAllNotifications(chatId, groupTimer, notification -> send(chatId, notification));
 
-                            
                             // Thêm log để kiểm tra
                             System.out.println("DEBUG: Schedule created and notifications scheduled for scheduleId=" + scheduleId + ", chatId=" + chatId);
 
@@ -134,6 +129,26 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
                                     "   ⏰ End Time: " + endTime + "\n" +
                                     "   🏫 Location: " + location + "\n\n" +
                                     "👥 Members can confirm with /confirm " + scheduleId + "");
+
+                            // Create a poll for members to vote
+                            String pollQuestion = "Do you agree with the schedule?\n" +
+                                    "📘 Subject: " + subject + "\n" +
+                                    "🕒 Start Time: " + time + "\n" +
+                                    "⏰ End Time: " + endTime + "\n" +
+                                    "🏫 Location: " + location;
+                            String pollId = createPoll(chatId, pollQuestion);
+                            if (pollId != null) {
+                                pollChatMap.put(pollId, chatId);
+                                scheduleManager.mapPollToSchedule(pollId, scheduleId);
+                                System.out.println("DEBUG: Poll created with pollId=" + pollId + ", chatId=" + chatId + ", scheduleId=" + scheduleId);
+                            }
+                            
+                            // Tự động lồng notify chỉ cho schedule vừa tạo
+                            boolean skip15Min = startTime.isBefore(now.plusMinutes(15));
+                            Timer groupTimer = timers.computeIfAbsent(chatId, k -> new Timer(true));
+                            scheduleManager.scheduleNotifications(scheduleId, chatId, groupTimer, notificationMessage -> send(chatId, notificationMessage), skip15Min);
+                            send(chatId, "mts");
+
                             return;
                         } else if (text.equalsIgnoreCase("n")) {
                             pendingScheduleRequests.remove(key);
@@ -146,14 +161,28 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
 
                 // Xử lý lệnh /confirm
                 if (text.startsWith("/confirm")) {
-                    confirmHandler.handleConfirm(message);
+                    String[] parts = text.split("\\s+");
+                    if (parts.length < 2) {
+                        send(chatId, "❌ Please use `/confirm <schedule_id>`\nExample: /confirm SCH123456");
+                        return;
+                    }
+                    String scheduleId = parts[1];
+                    String userName = message.getFrom().getFirstName();
+                    confirmHandler.handleConfirm(chatId, scheduleId, userId, userName);
                     return;
                 }
 
                 // Xử lý lệnh /notify
                 if (text.equalsIgnoreCase("/notify")) {
                     Timer groupTimer = timers.computeIfAbsent(chatId, k -> new Timer(true));
-                    scheduleManager.scheduleAllNotifications(chatId, groupTimer, notification -> send(chatId, notification));
+                    scheduleManager.scheduleAllNotifications(chatId, groupTimer, notification -> {
+                        try {
+                            send(chatId, notification);
+                        } catch (Exception ex) {
+                            System.err.println("Error sending notification: " + ex.getMessage());
+                            System.err.println("Error details: " + ex.getMessage());
+                        }
+                    });
                     send(chatId, "✅ Notifications scheduled for all events in this group! 🔔");
                     return;
                 }
@@ -180,7 +209,7 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
                     // Không cần thông báo lỗi
                 }
 
-                // ✅ Phân tích lịch học
+                // ✅ Phân tích lịch học và yêu cầu xác nhận
                 Map<String, List<String>> info = InfoExtractor.extractInfo(text);
                 List<String> times = info.get("Time");
                 List<String> subjects = info.get("Subject");
@@ -199,26 +228,12 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
                     String endTime = times.size() > 1 ? times.get(1) : time;
                     String location = String.join(", ", locations);
 
-                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm").withZone(ZoneId.of("Asia/Ho_Chi_Minh"));
-                    ZonedDateTime startTime = ZonedDateTime.parse(time, formatter);
-
-                    String scheduleId = scheduleManager.addSchedule(subject, time, endTime, location, chatId);
-                    ScheduleSaver.save(subject, time, endTime, location, chatId.toString(), chatTitle != null ? chatTitle : "Unknown Group", scheduleId);
-                    boolean skip15Min = startTime.isBefore(ZonedDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh")).plusMinutes(15));
-                    Timer groupTimer = timers.computeIfAbsent(chatId, k -> new Timer(true));
-                    scheduleManager.scheduleNotifications(scheduleId, chatId, groupTimer, notificationMessage -> send(chatId, notificationMessage), skip15Min);
-
-                    String pollQuestion = "📢 *Vote for schedule " + scheduleId + "*\n" +
-                            "Do you agree with this schedule?";
-                    String pollId = createPoll(chatId, pollQuestion); // Lưu pollId
-                    pollChatMap.put(pollId, chatId); // Lưu ánh xạ
-
-                    send(chatId, "✅ Schedule detected and saved! 🎉\n" +
+                    send(chatId, "📢 *Schedule detected!*\n" +
                             "   📘 Subject: " + subject + "\n" +
                             "   🕒 Start Time: " + time + "\n" +
                             "   ⏰ End Time: " + endTime + "\n" +
                             "   🏫 Location: " + location + "\n\n" +
-                            "👥 Members can confirm with /confirm " + scheduleId + "");
+                            "Reply with 'y' to confirm or 'n' to cancel.");
                 }
             }
         } else if (update.hasPollAnswer()) {
@@ -229,8 +244,23 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
             if (chatId != null) {
                 if (pollAnswer.getOptionIds().contains(0)) { // Vote "Yes"
                     send(chatId, "📢 " + pollAnswer.getUser().getFirstName() + " voted Yes for the poll! 👍");
+
+                    // Kiểm tra type safety khi lấy scheduleId
+                    Object scheduleIdObj = scheduleManager.getScheduleIdByPollId(pollId);
+                    String scheduleId = null;
+                    if (scheduleIdObj instanceof String) {
+                        scheduleId = (String) scheduleIdObj;
+                    }
+
+                    if (scheduleId != null) {
+                        Long userId = pollAnswer.getUser().getId();
+                        String userName = pollAnswer.getUser().getFirstName();
+                        confirmHandler.handleConfirm(chatId, scheduleId, userId, userName);
+                    } else {
+                        send(chatId, "❌ Unable to confirm schedule automatically. Invalid Schedule ID format.");
+                    }
                 } else if (pollAnswer.getOptionIds().contains(1)) { // Vote "No"
-                    send(chatId, "📢 " + pollAnswer.getUser().getFirstName() + " voted No for the poll! 👎");
+                    send(chatId, "📢 " + pollAnswer.getUser().getFirstName() + " voted No for the poll! 👎 (No confirmation will be made)");
                 }
             }
         }

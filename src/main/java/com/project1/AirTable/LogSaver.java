@@ -92,7 +92,10 @@ public class LogSaver {
             String jsonResponse = response.toString();
             int recordCount = countRecords(jsonResponse); // Đếm số bản ghi
 
+            System.out.println("DEBUG: LogSaver record count = " + recordCount); // Thêm log kiểm tra
+
             if (recordCount >= 500) {
+                System.out.println("DEBUG: LogSaver deleting oldest records...");
                 deleteOldestRecords(200); // Xóa 200 bản ghi cũ nhất
             }
         } else {
@@ -147,7 +150,7 @@ public class LogSaver {
             List<String> recordIds = extractRecordIds(response.toString());
             if (recordIds.size() > numberToDelete) {
                 // Sắp xếp và xóa 500 bản ghi cũ nhất (giả định Time là trường để sắp xếp)
-                for (int i = 0; i < numberToDelete && i < recordIds.size(); i++) {
+                for (int i = 500; i < numberToDelete && i < recordIds.size(); i++) {
                     deleteRecord(recordIds.get(i));
                 }
             }

@@ -12,20 +12,22 @@ public class ScheduleRecord {
     public Long groupId;
     public String chatTitle;             // Tên nhóm Telegram
     public final Set<Long> confirmedUsers = new HashSet<>(); // Danh sách user đã xác nhận
-    
-    // Constructor chính với endTime
-    public ScheduleRecord(String id, String subject, String time, String endTime, String location, Long groupId) {
+    public final Long creatorId;          // ID của người tạo lịch
+
+    // Constructor chính với endTime và creatorId
+    public ScheduleRecord(String id, String subject, String time, String endTime, String location, Long groupId, Long creatorId) {
         this.id = id;
         this.subject = subject;
         this.time = time;
         this.endTime = endTime;
         this.location = location;
         this.groupId = groupId;
+        this.creatorId = creatorId;
     }
 
-    // Constructor đầy đủ (có cả chatTitle) với endTime
-    public ScheduleRecord(String id, String subject, String time, String endTime, String location, Long groupId, String chatTitle) {
-        this(id, subject, time, endTime, location, groupId);
+    // Constructor đầy đủ (có cả chatTitle) với endTime và creatorId
+    public ScheduleRecord(String id, String subject, String time, String endTime, String location, Long groupId, String chatTitle, Long creatorId) {
+        this(id, subject, time, endTime, location, groupId, creatorId);
         this.chatTitle = chatTitle;
     }
 
@@ -33,30 +35,31 @@ public class ScheduleRecord {
     public String getId() { return id; }
     public String getSubject() { return subject; }
     public String getTime() { return time; }
-    public String getEndTime() { return endTime; } // Thêm getter cho endTime
+    public String getEndTime() { return endTime; }
     public String getLocation() { return location; }
     public Long getGroupId() { return groupId; }
     public String getChatTitle() { return chatTitle; }
-    public Set<Long> getConfirmedUsers() { return new HashSet<>(confirmedUsers); } // Trả về bản sao để tránh sửa trực tiếp
+    // Xoá confirmedUsers trên RAM
+    // public Set<Long> getConfirmedUsers() { return new HashSet<>(confirmedUsers); }
+    public Long getCreatorId() { return creatorId; }
 
     // ==== Setter ====
     public void setSubject(String subject) { this.subject = subject; }
     public void setTime(String time) { this.time = time; }
-    public void setEndTime(String endTime) { this.endTime = endTime; } // Thêm setter cho endTime
+    public void setEndTime(String endTime) { this.endTime = endTime; }
     public void setLocation(String location) { this.location = location; }
     public void setGroupId(Long groupId) { this.groupId = groupId; }
     public void setChatTitle(String chatTitle) { this.chatTitle = chatTitle; }
 
     // ==== Confirm logic ====
-    public boolean confirmUser(Long userId) {
-        return confirmedUsers.add(userId); // Trả về true nếu là người mới
-    }
-
-    public boolean isConfirmed(Long userId) {
-        return confirmedUsers.contains(userId);
-    }
-
-    public boolean addConfirmedUser(Long userId) {
-        return confirmedUsers.add(userId);
-    }
+    // Xoá logic xác nhận trên RAM
+    // public boolean confirmUser(Long userId) {
+    //     return confirmedUsers.add(userId); // Trả về true nếu là người mới
+    // }
+    // public boolean isConfirmed(Long userId) {
+    //     return confirmedUsers.contains(userId);
+    // }
+    // public boolean addConfirmedUser(Long userId) {
+    //     return confirmedUsers.add(userId);
+    // }
 }
