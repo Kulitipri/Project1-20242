@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.telegram.telegrambots.meta.api.methods.polls.SendPoll;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.User;
@@ -51,10 +52,9 @@ public class SetSchedule {
                     return;
                 }
                 temp.record.groupId = groupId;
-                // Lấy tên nhóm từ Telegram API
                 String chatTitle = TelegramApiUtil.getChatTitle(bot, groupId);
                 temp.chatTitle = chatTitle != null ? chatTitle : "Unknown Group";
-                temp.step = 0; // Chuyển sang bước nhập môn học
+                temp.step = 0;
                 send(chatId, "✅ Group verified. Now enter the *subject* of the class:");
             } catch (NumberFormatException e) {
                 send(chatId, "❌ Invalid group ID. Please enter a numeric group ID.");
@@ -68,13 +68,13 @@ public class SetSchedule {
             if (!extractedInfo.get("Subject").isEmpty()) temp.record.subject = extractedInfo.get("Subject").get(0);
             if (!extractedInfo.get("Time").isEmpty()) temp.record.time = extractedInfo.get("Time").get(0);
             if (!extractedInfo.get("Location").isEmpty()) temp.record.location = extractedInfo.get("Location").get(0);
-            temp.step = 1; // Bắt đầu từ bước kiểm tra thời gian
+            temp.step = 1;
             if (temp.record.time == null || !DateTimeValidator.isValidDateTime(temp.record.time)) {
-                send(chatId, "🕒 Please enter the *time* of the class in 'dd/MM/yyyy HH:mm' format (e.g., 05/06/2025 14:30).");
+                send(chatId, "🕒 Please enter the *start time* in 'dd/MM/yyyy HH:mm' format (e.g., 05/06/2025 14:30).");
             } else if (temp.record.subject == null) {
-                send(chatId, "📘 Please enter the *subject* of the class:");
+                send(chatId, "📘 Please enter the *subject*:");
             } else {
-                send(chatId, "🏫 Please enter the *location* of the class:");
+                send(chatId, "🏫 Please enter the *location*:");
             }
             return;
         }
@@ -88,12 +88,12 @@ public class SetSchedule {
 
         // Xử lý khi từ chối ("no")
         if (text.equalsIgnoreCase("no") && temp.step == -1) {
-            temp.step = 0; // Bắt đầu từ bước nhập subject
+            temp.step = 0;
             temp.record.subject = null;
             temp.record.time = null;
             temp.record.location = null;
-            // Không reset groupId để giữ nguyên nếu đã nhập
-            send(chatId, "📘 Please enter the *subject* of the class:");
+            temp.record.endTime = null;
+            send(chatId, "📘 Please enter the *subject*:");
             return;
         }
 
@@ -102,44 +102,65 @@ public class SetSchedule {
             case 0: // Nhập subject
                 temp.record.subject = text;
                 temp.step = 1;
-                send(chatId, "🕒 Please enter the *time* of the class in 'dd/MM/yyyy HH:mm' format (e.g., 05/06/2025 14:30).");
+                send(chatId, "🕒 Please enter the *start time* in 'dd/MM/yyyy HH:mm' format (e.g., 05/06/2025 14:30).");
                 break;
 
-            case 1: // Nhập time
+            case 1: // Nhập start time
                 if (!DateTimeValidator.isValidDateTime(text)) {
-                    send(chatId, "❌ Invalid time format. Please enter in 'dd/MM/yyyy HH:mm' format (e.g., 05/06/2025 14:30). Time must be in the future.");
+                    send(chatId, "❌ Invalid start time format. Use 'dd/MM/yyyy HH:mm'.");
                     return;
                 }
                 temp.record.time = text;
                 temp.step = 2;
-                send(chatId, "🏫 Please enter the *location* of the class:");
+                send(chatId, "⏰ Please enter the *end time* in 'dd/MM/yyyy HH:mm' format (e.g., 05/06/2025 16:00).");
                 break;
 
-            case 2: // Nhập location
+            case 2: // Nhập end time
+                if (!DateTimeValidator.isValidDateTime(text)) {
+                    send(chatId, "❌ Invalid end time format. Use 'dd/MM/yyyy HH:mm'.");
+                    return;
+                }
+                if (!DateTimeValidator.isAfter(temp.record.time, text)) {
+                    send(chatId, "❌ End time must be after start time.");
+                    return;
+                }
+                temp.record.endTime = text;
+                temp.step = 3;
+                send(chatId, "🏫 Please enter the *location*:");
+                break;
+
+            case 3: // Nhập location
                 temp.record.location = text;
 
+                // Tạo lịch và poll
                 String scheduleId = scheduleManager.addSchedule(
                     temp.record.subject,
                     temp.record.time,
+                    temp.record.endTime,
                     temp.record.location,
                     temp.record.groupId
                 );
 
+                send(chatId, "✅ *Schedule created successfully!* 🎉\n" +
+                        "   📘 *Subject:* " + temp.record.subject + "\n" +
+                        "   🕒 *Start Time:* " + temp.record.time + "\n" +
+                        "   ⏰ *End Time:* " + temp.record.endTime + "\n" +
+                        "   🏫 *Location:* " + temp.record.location + "\n\n" +
+                        "👥 *Members can confirm with /confirm " + scheduleId + "*");
+
+                String pollQuestion = "📢Vote for schedule " + scheduleId + "\n" +
+                        "Do you agree with this schedule?";
+                createPoll(chatId, pollQuestion);
+
                 ScheduleSaver.save(
                     temp.record.subject,
                     temp.record.time,
+                    temp.record.endTime,
                     temp.record.location,
                     String.valueOf(temp.record.groupId),
                     temp.chatTitle,
                     scheduleId
                 );
-
-                send(chatId, "✅ Schedule created successfully:\n\n"
-                    + "📘 Subject: " + temp.record.subject + "\n"
-                    + "🕒 Time: " + temp.record.time + "\n"
-                    + "🏫 Location: " + temp.record.location + "\n"
-                    + "📍 Group ID: " + temp.record.groupId + "\n\n"
-                    + "Members can confirm with /confirm " + scheduleId);
 
                 userStates.remove(key);
                 break;
@@ -159,19 +180,35 @@ public class SetSchedule {
             return;
         }
 
-        String groupTitle = message.getChat().getTitle(); // Sẽ là null trong private chat
-        ScheduleRecord record = new ScheduleRecord(null, null, null, null, groupId);
-        TempScheduleState temp = new TempScheduleState(record, -1, groupTitle); // -1 cho trạng thái tự động phát hiện
+        String groupTitle = message.getChat().getTitle();
+        ScheduleRecord record = new ScheduleRecord(null, null, null, null, null, groupId);
+        TempScheduleState temp = new TempScheduleState(record, -1, groupTitle);
 
         if ("private".equals(chatType)) {
-            temp.step = -2; // Trạng thái chờ ID nhóm
-            send(chatId, "🔍 Please enter the *Group ID* where you want to create the schedule. You can find it in the group settings.");
+            temp.step = -2;
+            send(chatId, "🔍 Please enter the *Group ID* where you want to create the schedule.");
         } else {
-            temp.step = 0; // Trong nhóm, bắt đầu từ nhập môn học
-            send(chatId, "📘 Please enter the *subject* of the class:");
+            temp.step = 0;
+            send(chatId, "📚 Please enter the *subject* of the class:");
         }
 
         userStates.put(key, temp);
+    }
+
+    private void createPoll(Long chatId, String question) {
+        SendPoll poll = new SendPoll();
+        poll.setChatId(chatId.toString());
+        poll.setQuestion(question);
+        poll.setOptions(List.of("Yes", "No"));
+        poll.setIsAnonymous(false);
+        poll.setType("regular");
+
+        try {
+            bot.execute(poll);
+        } catch (TelegramApiException e) {
+            System.err.println("❌ Error creating poll: " + e.getMessage());
+            send(chatId, "❌ Failed to create poll. Please try again.");
+        }
     }
 
     private void send(Long chatId, String text) {
@@ -180,7 +217,7 @@ public class SetSchedule {
             msg.enableMarkdown(true);
             bot.execute(msg);
         } catch (TelegramApiException e) {
-            System.err.println("❌ Lỗi khi gửi tin nhắn: " + e.getMessage());
+            System.err.println("❌ Error sending message: " + e.getMessage());
         }
     }
 

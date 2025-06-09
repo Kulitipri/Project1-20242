@@ -22,7 +22,12 @@ public class CommandHandler {
         this.adminChecker = new IsUserAdmin(bot);
         this.setScheduleHandler = new SetSchedule(bot);
         this.confirmHandler = new ConfirmHandler(bot);
+        this.viewSchedules = new ViewSchedules(bot); 
+        this.groupInfoHandler = new GroupInfoHandler(bot);
     }
+
+    private final ViewSchedules viewSchedules; 
+    private final GroupInfoHandler groupInfoHandler; 
 
     public void handleCommand(Message message) {
     String text = message.getText().trim();
@@ -65,7 +70,7 @@ public class CommandHandler {
     }
 
     if (text.equalsIgnoreCase("/time")) {
-        String date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy"));
+        String date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
         String time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
         send(chatId, "Today is " + date + "\nTime (GMT+7): " + time);
         return;
@@ -85,8 +90,12 @@ public class CommandHandler {
         return;
     }
 
-    if (text.equalsIgnoreCase("/set_schedule")) {
-        setScheduleHandler.start(chatId, userId, chatType, message);
+    if (text.startsWith("/set_schedule")) {
+        if (SetSchedule.containsUserState(key)) {
+            setScheduleHandler.handle(message);
+        } else {
+            setScheduleHandler.start(chatId, userId, chatType, message);
+        }
         return;
     }
 
@@ -97,6 +106,16 @@ public class CommandHandler {
 
     if (text.startsWith("/confirm")) {
         confirmHandler.handleConfirm(message);
+        return;
+    }
+
+    if (text.startsWith("/view_schedules")) {
+        viewSchedules.handle(message);
+        return;
+    }
+
+    if (text.startsWith("/group_info")) {
+        groupInfoHandler.handle(message);
         return;
     }
 

@@ -13,9 +13,8 @@ public class ScheduleSaver {
     private static final String TABLE_NAME = BotConfig.getScheduleTableName();
     private static final String API_KEY = BotConfig.getAirtableToken();
 
-    public static void save(String subject, String time, String location, String groupId, String groupName, String scheduleId) {
+    public static void save(String subject, String time, String endTime, String location, String groupId, String groupName, String scheduleId) {
         try {
-            
             String urlString = "https://api.airtable.com/v0/" + BASE_ID + "/" + TABLE_NAME;
             URL url = new URL(urlString);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -27,22 +26,25 @@ public class ScheduleSaver {
 
             String subjectStr = String.join(", ", subject);
             String timeStr = String.join(", ", time);
+            String endTimeStr = String.join(", ", endTime); // Xử lý endTime tương tự time
             String locationStr = String.join(", ", location);
 
             String json = String.format(
-            "{ \"fields\": { " +
-            "\"GroupId\": \"%s\", " +
-            "\"GroupName\": \"%s\", " +
-            "\"ScheduleId\": \"%s\", " +
-            "\"Subject\": \"%s\", " +
-            "\"Time\": \"%s\", " +
-            "\"Location\": \"%s\" " +
-            "} }",
+                "{ \"fields\": { " +
+                "\"GroupId\": \"%s\", " +
+                "\"GroupName\": \"%s\", " +
+                "\"ScheduleId\": \"%s\", " +
+                "\"Subject\": \"%s\", " +
+                "\"Time\": \"%s\", " +
+                "\"EndTime\": \"%s\", " + // Thêm EndTime
+                "\"Location\": \"%s\" " +
+                "} }",
                 escapeJson(groupId),
                 escapeJson(groupName),
                 escapeJson(scheduleId),
                 escapeJson(subjectStr),
                 escapeJson(timeStr),
+                escapeJson(endTimeStr), // Thêm endTimeStr
                 escapeJson(locationStr)
             );
 
@@ -61,7 +63,8 @@ public class ScheduleSaver {
             System.err.println("Error saving schedule: " + e.getMessage());
         }
     }
+
     private static String escapeJson(String input) {
-        return input.replace("\"", "\\\"");
+        return input != null ? input.replace("\"", "\\\"") : "";
     }
 }
