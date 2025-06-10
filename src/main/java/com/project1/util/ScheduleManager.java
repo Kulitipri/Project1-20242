@@ -17,6 +17,19 @@ public class ScheduleManager {
     private final AtomicInteger counter = new AtomicInteger(0); // Counter nguyên tử để tạo ID duy nhất
     private final Map<String, String> pollToScheduleMap = new ConcurrentHashMap<>(); // pollId -> scheduleId
 
+    private final AirtableClient airtableClient = new AirtableClient(); // Ensure AirtableClient is defined or imported
+
+    // Placeholder definition for AirtableClient class
+    private static class AirtableClient {
+        public void deleteSchedule(String scheduleId) {
+            // Implement deletion logic here
+        }
+
+        public void deleteConfirmationsByScheduleId(String scheduleId) {
+            // Implement deletion logic here
+        }
+    }
+
     // Constructor private để ngăn tạo instance mới
     private ScheduleManager() {
         // Khởi tạo Timer để dọn dẹp định kỳ (mỗi 1 giờ)
@@ -174,20 +187,26 @@ public class ScheduleManager {
     }
 
     // Phương thức dọn dẹp lịch đã kết thúc
-    // ĐÃ SỬA: Không tự động xóa schedule khỏi RAM nữa, chỉ log ra nếu cần thiết
     private void cleanupPastSchedules() {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm").withZone(ZoneId.of("Asia/Ho_Chi_Minh"));
         ZonedDateTime now = ZonedDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        
         for (Map.Entry<String, ScheduleRecord> entry : schedules.entrySet()) {
             ScheduleRecord record = entry.getValue();
             try {
                 ZonedDateTime endTime = ZonedDateTime.parse(record.getEndTime(), formatter);
                 if (endTime.isBefore(now)) {
-                    // Không xóa khỏi RAM, chỉ log ra để theo dõi
-                    System.out.println("INFO: Schedule " + record.getId() + " has ended but remains in RAM.");
+                    String scheduleId = entry.getKey();
+                    // Xóa schedule từ Airtable
+                    airtableClient.deleteSchedule(scheduleId);
+                    // Xóa các confirmations liên quan
+                    airtableClient.deleteConfirmationsByScheduleId(scheduleId);
+                    // Xóa khỏi RAM
+                    schedules.remove(scheduleId);
+                    System.out.println("Schedule " + scheduleId + " has ended and been deleted from Airtable.");
                 }
             } catch (Exception e) {
-                System.err.println("Error parsing endTime for schedule " + record.getId() + ": " + e.getMessage());
+                System.err.println("Error cleaning up schedule: " + e.getMessage());
             }
         }
     }

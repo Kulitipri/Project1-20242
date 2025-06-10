@@ -25,9 +25,9 @@ public class GroupInfoHandler {
         Long chatId = message.getChatId();
         String chatType = message.getChat().getType();
 
-        // Chỉ cho phép trong chat private
-        if (!chatType.equals("private")) {
-            send(chatId, "❌ This command is only available in private chats with the bot.");
+        // Chỉ cho phép trong private chat
+        if (!"private".equals(chatType)) {
+            send(chatId, "❌ This command is only available in private chats with the bot. Please message me privately to view group information.");
             return;
         }
 
@@ -44,12 +44,13 @@ public class GroupInfoHandler {
             StringBuilder response = new StringBuilder("📢 All Group Information:\n\n");
             for (Map<String, String> groupInfo : allGroupInfo) {
                 String groupName = escapeMarkdown(groupInfo.getOrDefault("groupName", "Unknown Group"));
-                String rawInviteLink = groupInfo.getOrDefault("inviteLink", "No invite link available"); // Phiên bản chưa thoát
+                String rawInviteLink = groupInfo.getOrDefault("inviteLink", "No invite link available");
                 String description = escapeMarkdown(groupInfo.getOrDefault("description", "No description available"));
+                String groupId = escapeMarkdown(groupInfo.getOrDefault("groupId", "N/A"));
 
-                // Chỉ thoát groupName và description, không thoát inviteLink trong URL
                 response.append("🏠 Group Name: ").append(groupName).append("\n")
-                        .append("🔗 Invite Link: [").append(rawInviteLink).append("](").append(rawInviteLink).append(")\n") // Sử dụng rawInviteLink cho URL
+                        .append("🆔 Group ID: ").append(groupId).append("\n")  // Thêm dòng này
+                        .append("🔗 Invite Link: [").append(rawInviteLink).append("](").append(rawInviteLink).append(")\n")
                         .append("📝 Description: ").append(description).append("\n\n");
             }
 

@@ -39,8 +39,6 @@ public class ScheduleRecord {
     public String getLocation() { return location; }
     public Long getGroupId() { return groupId; }
     public String getChatTitle() { return chatTitle; }
-    // Xoá confirmedUsers trên RAM
-    // public Set<Long> getConfirmedUsers() { return new HashSet<>(confirmedUsers); }
     public Long getCreatorId() { return creatorId; }
 
     // ==== Setter ====

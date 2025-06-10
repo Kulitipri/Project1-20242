@@ -220,10 +220,13 @@ public class GroupSaver {
         return new String[] { null, null };
     }
 
+    // Sửa lại buildJson để thêm GroupId vào fields
     private String buildJson(String chatId, String chatTitle, String inviteLink, String description, boolean isUpdate) {
         String fields = String.format(
             "\"GroupId\": \"%s\", \"GroupName\": \"%s\", \"Description\": \"%s\"",
-            escapeJson(chatId), escapeJson(chatTitle), escapeJson(description)
+            escapeJson(chatId), // Thêm GroupId là chính chatId
+            escapeJson(chatTitle),
+            escapeJson(description)
         );
         if (!isUpdate && inviteLink != null && !inviteLink.startsWith("Error")) {
             fields += ", \"InviteLink\": \"" + escapeJson(inviteLink) + "\"";
