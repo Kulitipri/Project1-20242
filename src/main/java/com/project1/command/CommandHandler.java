@@ -28,14 +28,14 @@ public class CommandHandler {
         this.groupInfoHandler = new GroupInfoHandler(bot);
         this.unconfirmHandler = new UnconfirmHandler(bot);
         this.myConfirmHandler = new MyConfirmHandler(bot);
-        this.deleteScheduleHandler = new DeleteScheduleHandler(bot); // Thêm dòng này
+        this.deleteScheduleHandler = new DeleteScheduleHandler(bot);
     }
 
     private final ViewSchedules viewSchedules; 
     private final GroupInfoHandler groupInfoHandler; 
     private final UnconfirmHandler unconfirmHandler;
     private final MyConfirmHandler myConfirmHandler;
-    private final DeleteScheduleHandler deleteScheduleHandler; // Thêm dòng này
+    private final DeleteScheduleHandler deleteScheduleHandler;
 
     public void handleCommand(Message message) {
     String text = message.getText().trim();
@@ -59,16 +59,33 @@ public class CommandHandler {
 
     if (text.equalsIgnoreCase("/help")) {
         send(chatId,
-            "List of commands:\n" +
-            "/start - Start chatting\n" +
-            "/help - Show this help\n" +
-            "/about - Bot info\n" +
-            "/time - Show current time\n" +
-            "/set_schedule - Create a new class schedule\n" +
-            "/cancel - Cancel schedule creation\n" +
-            "/confirm <schedule_id> - Confirm attendance\n" +
-            "/unconfirm <schedule_id> - Unconfirm attendance\n" + // Thêm dòng này
-            "/Test - (admin only) Command under development"
+            "*Available Commands:*\n\n" +
+            "🤖 *Basic Commands:*\n" +
+            "*/start* - Start the bot\n" +
+            "*/help* - Show this help message\n" +
+            "*/about* - Show bot information\n" +
+            "*/time* - Show current time\n\n" +
+
+            "📅 *Schedule Commands:*\n" +
+            "*/set_schedule* - Create a new schedule\n" + 
+            "*/view_schedules* - View all schedules in group\n" +
+            "*/delete_schedule* <id> - Delete a schedule (admin only)\n\n" +
+            
+            "✅ *Confirmation Commands:*\n" +
+            "*/confirm* <id> - Confirm attendance for a schedule\n" +
+            "*/unconfirm* <id> - Cancel your confirmation\n" +
+            "*/myconfirm* - View your confirmed schedules\n\n" +
+            
+            "👥 *Group Commands:*\n" +
+            "*/group_info* - View information about all groups\n" +
+            "*/cancel* - Cancel ongoing schedule creation\n\n" +
+
+            "💡 *Additional Features:*\n" +
+            "• Automatic schedule detection from messages\n" +
+            "• Poll voting for schedule agreement\n" +
+            "• Automatic notifications before classes\n\n" +
+            
+            "Note: Some commands are restricted to group admins only."
         );
         return;
     }

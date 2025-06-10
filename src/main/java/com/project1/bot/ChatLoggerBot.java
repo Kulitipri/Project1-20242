@@ -143,11 +143,11 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
                                 System.out.println("DEBUG: Poll created with pollId=" + pollId + ", chatId=" + chatId + ", scheduleId=" + scheduleId);
                             }
                             
-                            // Tự động lồng notify chỉ cho schedule vừa tạo
+                            // lên lịch thông báo
                             boolean skip15Min = startTime.isBefore(now.plusMinutes(15));
                             Timer groupTimer = timers.computeIfAbsent(chatId, k -> new Timer(true));
                             scheduleManager.scheduleNotifications(scheduleId, chatId, groupTimer, notificationMessage -> send(chatId, notificationMessage), skip15Min);
-                            send(chatId, "mts");
+                            //send(chatId, "mts"); // debug đi vào huyền thoại
 
                             return;
                         } else if (text.equalsIgnoreCase("n")) {
@@ -169,21 +169,6 @@ public class ChatLoggerBot extends TelegramLongPollingBot {
                     String scheduleId = parts[1];
                     String userName = message.getFrom().getFirstName();
                     confirmHandler.handleConfirm(chatId, scheduleId, userId, userName);
-                    return;
-                }
-
-                // Xử lý lệnh /notify
-                if (text.equalsIgnoreCase("/notify")) {
-                    Timer groupTimer = timers.computeIfAbsent(chatId, k -> new Timer(true));
-                    scheduleManager.scheduleAllNotifications(chatId, groupTimer, notification -> {
-                        try {
-                            send(chatId, notification);
-                        } catch (Exception ex) {
-                            System.err.println("Error sending notification: " + ex.getMessage());
-                            System.err.println("Error details: " + ex.getMessage());
-                        }
-                    });
-                    send(chatId, "✅ Notifications scheduled for all events in this group! 🔔");
                     return;
                 }
 
